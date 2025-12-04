@@ -2,10 +2,10 @@ name: Pre-Market Analysis
 
 on:
   schedule:
-    # Runs at 2:25 AM IST daily (8:55 PM UTC)
-    - cron: '55 20 * * *'
-  
-  # Optional: Manual trigger
+    # Runs at 2:35 AM IST daily (9:05 PM UTC)
+    - cron: '05 21 * * *'  # 2:35 AM IST = 9:05 PM UTC
+    
+  # Manual trigger
   workflow_dispatch:
 
 jobs:
@@ -13,6 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Check IST Time
+        run: |
+          echo "🕒 CURRENT IST: $(TZ='Asia/Kolkata' date '+%H:%M:%S')"
+          echo "📅 DATE: $(TZ='Asia/Kolkata' date '+%d %b %Y, %A')"
+          echo "⏰ SCHEDULED: 2:35 AM IST Daily"
+          
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -22,11 +28,13 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: |
-          pip install yfinance pandas requests pytz numpy
+        run: pip install yfinance pandas requests pytz numpy
 
-      - name: Run analysis
+      - name: Run Institutional Analysis
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: python ultimate_algo.py
+        run: |
+          echo "🚀 Starting Institutional Pre-Market Analysis..."
+          python ultimate_algo.py
+          echo "✅ Analysis completed at $(TZ='Asia/Kolkata' date '+%H:%M:%S IST')"
