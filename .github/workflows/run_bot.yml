@@ -1,9 +1,9 @@
-name: 🕒 3:15 AM IST Market Analysis
+name: 🕘 9:00 AM IST Market Analysis
 
 on:
   schedule:
-    # 3:15 AM IST = 21:45 UTC
-    - cron: "45 21 * * *"
+    # 9:00 AM IST = 03:30 UTC
+    - cron: "30 3 * * *"
   
   workflow_dispatch:
 
@@ -38,7 +38,7 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
-          echo "🚀 Running 3:15 AM IST analysis..."
+          echo "🚀 Running 9:00 AM IST analysis..."
           python ultimate_algo.py
       
       - name: Done
