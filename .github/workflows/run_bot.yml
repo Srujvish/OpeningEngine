@@ -1,9 +1,9 @@
-name: 🕐 3:00 AM Market Analysis
+name: 🕒 3:15 AM IST Market Analysis
 
 on:
   schedule:
-    # 3:00 AM IST = 9:30 PM UTC
-    - cron: '30 21 * * *'
+    # 3:15 AM IST = 21:45 UTC
+    - cron: "45 21 * * *"
   
   workflow_dispatch:
 
@@ -12,40 +12,36 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 🔍 Check Current Time
+      - name: 🕒 Show Current Time
         run: |
-          echo "=========================================="
-          echo "🕒 CURRENT UTC: $(date -u '+%H:%M:%S %Z')"
-          echo "🇮🇳 CURRENT IST: $(TZ='Asia/Kolkata' date '+%H:%M:%S %Z')"
-          echo "🎯 SCHEDULED FOR: 3:00 AM IST"
-          echo "⏰ NEXT RUN: Tomorrow 3:00 AM IST"
-          echo "=========================================="
+          echo "=== UTC NOW ==="
+          date -u
+          echo "=== IST NOW ==="
+          TZ='Asia/Kolkata' date
+          echo "Triggered at (IST): $(TZ='Asia/Kolkata' date '+%Y-%m-%d %H:%M:%S')"
       
-      - name: 📥 Download Code
+      - name: Checkout
         uses: actions/checkout@v3
       
-      - name: 🐍 Setup Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
       
-      - name: 📦 Install Requirements
+      - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install yfinance pandas requests pytz numpy
+          pip install yfinance pandas numpy pytz requests
       
-      - name: 🚀 Run Analysis Script
+      - name: Run Algorithm
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
-          echo "🚀 Starting Institutional Analysis..."
+          echo "🚀 Running 3:15 AM IST analysis..."
           python ultimate_algo.py
       
-      - name: ✅ Verify Completion
+      - name: Done
         run: |
-          echo "=========================================="
-          echo "✅ ANALYSIS COMPLETED SUCCESSFULLY!"
-          echo "🕒 COMPLETED AT IST: $(TZ='Asia/Kolkata' date '+%H:%M:%S')"
-          echo "📅 DATE: $(TZ='Asia/Kolkata' date '+%d %b %Y')"
-          echo "=========================================="
+          echo "Completed at IST: $(TZ='Asia/Kolkata' date '+%H:%M:%S')"
+          echo "Date: $(TZ='Asia/Kolkata' date '+%d-%m-%Y')"
