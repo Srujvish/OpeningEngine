@@ -1,5 +1,6 @@
 # INSTITUTIONAL PRE-MARKET ANALYSIS ENGINE
 # 100% WORKING ON GITHUB - ONLY WORKING WEBSITES
+# COMPLETELY FIXED: NO MORE SERIES COMPARISON ERRORS
 
 import os
 import time
@@ -45,21 +46,21 @@ def get_sgx_nifty():
         # Option 1: SGX Nifty Future (CONFIRMED WORKING)
         sgx = yf.download("NQ=F", period="1d", interval="1m", progress=False)
         if not sgx.empty:
-            sgx_close = sgx['Close'].iloc[-1]
-            return round(float(sgx_close), 2)
+            sgx_close = float(sgx['Close'].iloc[-1])
+            return round(sgx_close, 2)
         
         # Option 2: NSE Nifty Future (CONFIRMED WORKING)
         nifty_fut = yf.download("NIFTY_50.NS", period="1d", interval="1m", progress=False)
         if not nifty_fut.empty:
-            fut_close = nifty_fut['Close'].iloc[-1]
-            return round(float(fut_close), 2)
+            fut_close = float(nifty_fut['Close'].iloc[-1])
+            return round(fut_close, 2)
         
         # Option 3: Use current Nifty as fallback
         nifty = yf.download("^NSEI", period="1d", interval="1m", progress=False)
         if not nifty.empty:
-            nifty_close = nifty['Close'].iloc[-1]
+            nifty_close = float(nifty['Close'].iloc[-1])
             # SGX usually trades at premium
-            return round(float(nifty_close) + 25, 2)
+            return round(nifty_close + 25, 2)
             
     except Exception as e:
         print(f"SGX error: {e}")
@@ -91,11 +92,12 @@ def get_global_markets():
             try:
                 data = yf.download(symbol, period="2d", interval="1d", progress=False)
                 if not data.empty and len(data) >= 2:
-                    prev_close = data['Close'].iloc[-2]
-                    current_close = data['Close'].iloc[-1]
+                    prev_close = float(data['Close'].iloc[-2])
+                    current_close = float(data['Close'].iloc[-1])
                     change_pct = ((current_close - prev_close) / prev_close) * 100
                     markets[name] = round(change_pct, 2)
-            except:
+            except Exception as e:
+                print(f"Error fetching {name}: {e}")
                 continue
                 
     except Exception as e:
@@ -115,21 +117,29 @@ def get_previous_day_data():
         nifty = yf.download("^NSEI", period="5d", interval="1d", progress=False)
         if not nifty.empty and len(nifty) >= 2:
             prev = nifty.iloc[-2]
+            prev_open = float(prev['Open'])
+            prev_high = float(prev['High'])
+            prev_low = float(prev['Low'])
+            prev_close = float(prev['Close'])
+            prev_volume = int(prev['Volume'])
+            
+            change_pct = ((prev_close - prev_open) / prev_open) * 100
+            
             data['NIFTY'] = {
-                'OPEN': round(float(prev['Open']), 2),
-                'HIGH': round(float(prev['High']), 2),
-                'LOW': round(float(prev['Low']), 2),
-                'CLOSE': round(float(prev['Close']), 2),
-                'CHANGE': round(((prev['Close'] - prev['Open']) / prev['Open']) * 100, 2),
-                'VOLUME': int(prev['Volume'])
+                'OPEN': round(prev_open, 2),
+                'HIGH': round(prev_high, 2),
+                'LOW': round(prev_low, 2),
+                'CLOSE': round(prev_close, 2),
+                'CHANGE': round(change_pct, 2),
+                'VOLUME': prev_volume
             }
             
-            # Candle pattern analysis
-            body = abs(prev['Close'] - prev['Open'])
-            upper_wick = prev['High'] - max(prev['Close'], prev['Open'])
-            lower_wick = min(prev['Close'], prev['Open']) - prev['Low']
+            # Candle pattern analysis - FIXED: All values are floats
+            body = abs(prev_close - prev_open)
+            upper_wick = prev_high - max(prev_close, prev_open)
+            lower_wick = min(prev_close, prev_open) - prev_low
             
-            if float(prev['Close']) > float(prev['Open']):
+            if prev_close > prev_open:
                 if upper_wick < body * 0.1 and lower_wick < body * 0.1:
                     data['NIFTY']['PATTERN'] = "BULLISH MARUBOZU"
                 elif body > 0:
@@ -144,12 +154,19 @@ def get_previous_day_data():
         banknifty = yf.download("^NSEBANK", period="5d", interval="1d", progress=False)
         if not banknifty.empty and len(banknifty) >= 2:
             prev = banknifty.iloc[-2]
+            prev_open = float(prev['Open'])
+            prev_high = float(prev['High'])
+            prev_low = float(prev['Low'])
+            prev_close = float(prev['Close'])
+            
+            change_pct = ((prev_close - prev_open) / prev_open) * 100
+            
             data['BANKNIFTY'] = {
-                'OPEN': round(float(prev['Open']), 2),
-                'HIGH': round(float(prev['High']), 2),
-                'LOW': round(float(prev['Low']), 2),
-                'CLOSE': round(float(prev['Close']), 2),
-                'CHANGE': round(((prev['Close'] - prev['Open']) / prev['Open']) * 100, 2)
+                'OPEN': round(prev_open, 2),
+                'HIGH': round(prev_high, 2),
+                'LOW': round(prev_low, 2),
+                'CLOSE': round(prev_close, 2),
+                'CHANGE': round(change_pct, 2)
             }
             
     except Exception as e:
@@ -181,12 +198,14 @@ def get_last_30min_data():
             else:
                 vwap = last_5min_close
             
+            close_vs_vwap = "ABOVE" if last_5min_close > vwap else "BELOW"
+            
             return {
                 'HIGH_30M': round(last_30min_high, 2),
                 'LOW_30M': round(last_30min_low, 2),
                 'LAST_CLOSE': round(last_5min_close, 2),
                 'VWAP': round(vwap, 2),
-                'CLOSE_VS_VWAP': "ABOVE" if last_5min_close > vwap else "BELOW"
+                'CLOSE_VS_VWAP': close_vs_vwap
             }
             
     except Exception as e:
@@ -202,15 +221,20 @@ def get_india_vix():
     try:
         vix = yf.download("^INDIAVIX", period="1d", interval="1d", progress=False)
         if not vix.empty:
-            vix_value = round(float(vix['Close'].iloc[-1]), 2)
+            vix_value = float(vix['Close'].iloc[-1])
+            vix_value_rounded = round(vix_value, 2)
             
             # Interpretation
-            if vix_value < 12: vix_sentiment = "LOW FEAR (Rangebound)"
-            elif vix_value < 18: vix_sentiment = "NORMAL"
-            elif vix_value < 25: vix_sentiment = "HIGH FEAR (Volatile)"
-            else: vix_sentiment = "EXTREME FEAR (High Volatility)"
+            if vix_value_rounded < 12: 
+                vix_sentiment = "LOW FEAR (Rangebound)"
+            elif vix_value_rounded < 18: 
+                vix_sentiment = "NORMAL"
+            elif vix_value_rounded < 25: 
+                vix_sentiment = "HIGH FEAR (Volatile)"
+            else: 
+                vix_sentiment = "EXTREME FEAR (High Volatility)"
             
-            return vix_value, vix_sentiment
+            return vix_value_rounded, vix_sentiment
             
     except Exception as e:
         print(f"VIX error: {e}")
@@ -229,34 +253,39 @@ def get_fii_dii_data():
         sgx_nifty = get_sgx_nifty()
         prev_data = get_previous_day_data()
         
-        if 'NIFTY' in prev_data and sgx_nifty:
+        if prev_data and 'NIFTY' in prev_data and sgx_nifty:
             prev_close = prev_data['NIFTY']['CLOSE']
             gap_pct = ((sgx_nifty - prev_close) / prev_close) * 100
             
             # Simulate FII/DII based on gap and VIX
-            if gap_pct > 0.3 and vix_value < 15:
-                # Bullish scenario: FIIs buying
-                fii_net = np.random.randint(500, 1500)
-                dii_net = np.random.randint(-200, 500)
-            elif gap_pct < -0.3 and vix_value > 18:
-                # Bearish scenario: FIIs selling
-                fii_net = np.random.randint(-1500, -500)
-                dii_net = np.random.randint(200, 800)
-            else:
-                # Neutral scenario
-                fii_net = np.random.randint(-300, 300)
-                dii_net = np.random.randint(-200, 200)
-            
-            return {
-                'FII_NET': fii_net,
-                'DII_NET': dii_net,
-                'FII_SENTIMENT': 'BUYING' if fii_net > 0 else 'SELLING',
-                'DII_SENTIMENT': 'BUYING' if dii_net > 0 else 'SELLING'
-            }
+            if vix_value:
+                if gap_pct > 0.3 and vix_value < 15:
+                    # Bullish scenario: FIIs buying
+                    fii_net = np.random.randint(500, 1500)
+                    dii_net = np.random.randint(-200, 500)
+                elif gap_pct < -0.3 and vix_value > 18:
+                    # Bearish scenario: FIIs selling
+                    fii_net = np.random.randint(-1500, -500)
+                    dii_net = np.random.randint(200, 800)
+                else:
+                    # Neutral scenario
+                    fii_net = np.random.randint(-300, 300)
+                    dii_net = np.random.randint(-200, 200)
+                
+                fii_sentiment = 'BUYING' if fii_net > 0 else 'SELLING'
+                dii_sentiment = 'BUYING' if dii_net > 0 else 'SELLING'
+                
+                return {
+                    'FII_NET': fii_net,
+                    'DII_NET': dii_net,
+                    'FII_SENTIMENT': fii_sentiment,
+                    'DII_SENTIMENT': dii_sentiment
+                }
                 
     except Exception as e:
         print(f"FII/DII error: {e}")
     
+    # Default fallback
     return {
         'FII_NET': 0,
         'DII_NET': 0,
@@ -284,12 +313,14 @@ def get_put_call_ratio():
                 pcr = 1.1 + np.random.uniform(-0.1, 0.1)  # Normal
                 sentiment = "NEUTRAL"
             
+            pcr_rounded = round(pcr, 2)
+            
             # Generate simulated OI
             base_oi = 1000000
             ce_oi = base_oi
-            pe_oi = int(base_oi * pcr)
+            pe_oi = int(base_oi * pcr_rounded)
             
-            return round(pcr, 2), sentiment, ce_oi, pe_oi
+            return pcr_rounded, sentiment, ce_oi, pe_oi
         
         # Fallback values
         return 1.1, "NEUTRAL", 1000000, 1100000
@@ -323,10 +354,7 @@ def calculate_max_pain():
             distance = abs(current_price - max_pain_strike)
             distance_pct = (distance / current_price) * 100
             
-            if current_price > max_pain_strike:
-                bias = "DOWNWARD PRESSURE"
-            else:
-                bias = "UPWARD PRESSURE"
+            bias = "DOWNWARD PRESSURE" if current_price > max_pain_strike else "UPWARD PRESSURE"
             
             return {
                 'MAX_PAIN': max_pain_strike,
@@ -373,7 +401,7 @@ def get_technical_levels():
         nifty = yf.download("^NSEI", period="20d", interval="1d", progress=False)
         
         if not nifty.empty and len(nifty) >= 20:
-            closes = nifty['Close']
+            closes = nifty['Close'].astype(float)
             
             # Moving Averages
             ma20 = float(closes.rolling(20).mean().iloc[-1])
@@ -401,12 +429,14 @@ def get_technical_levels():
                 '0.786': swing_low + swing_range * 0.786
             }
             
+            fib_levels_rounded = {k: round(float(v), 2) for k, v in fib_levels.items()}
+            
             return {
                 'MA20': round(ma20, 2),
                 'MA50': round(ma50, 2),
                 'RESISTANCE': round(recent_high, 2),
                 'SUPPORT': round(recent_low, 2),
-                'FIB_LEVELS': {k: round(float(v), 2) for k, v in fib_levels.items()}
+                'FIB_LEVELS': fib_levels_rounded
             }
             
     except Exception as e:
@@ -429,7 +459,7 @@ def predict_opening_gap():
         global_mkts = get_global_markets()
         vix_value, vix_sentiment = get_india_vix()
         
-        if 'NIFTY' in prev_data and sgx_nifty:
+        if prev_data and 'NIFTY' in prev_data and sgx_nifty:
             prev_close = prev_data['NIFTY']['CLOSE']
             gap_pct = ((sgx_nifty - prev_close) / prev_close) * 100
             
@@ -465,7 +495,10 @@ def predict_opening_gap():
                 factors.append("GLOBAL MARKETS NEGATIVE")
             
             # Factor 3: Previous Day Close (15% weight)
-            prev_close_pos = (prev_data['NIFTY']['CLOSE'] - prev_data['NIFTY']['LOW']) / (prev_data['NIFTY']['HIGH'] - prev_data['NIFTY']['LOW'])
+            prev_high = prev_data['NIFTY']['HIGH']
+            prev_low = prev_data['NIFTY']['LOW']
+            prev_close_pos = (prev_close - prev_low) / (prev_high - prev_low) if (prev_high - prev_low) > 0 else 0.5
+            
             if prev_close_pos > 0.6:
                 score += 15
                 factors.append("PREV CLOSE IN UPPER RANGE")
@@ -476,14 +509,15 @@ def predict_opening_gap():
                 factors.append("PREV CLOSE IN MIDDLE")
             
             # Factor 4: VIX (10% weight)
-            if vix_value and vix_value > 18:
-                score -= 10  # High VIX negative for gap up
-                factors.append(f"HIGH VIX: {vix_value} ({vix_sentiment})")
-            elif vix_value and vix_value < 12:
-                score += 5   # Low VIX positive
-                factors.append(f"LOW VIX: {vix_value} ({vix_sentiment})")
-            else:
-                factors.append(f"VIX NORMAL: {vix_value}")
+            if vix_value:
+                if vix_value > 18:
+                    score -= 10  # High VIX negative for gap up
+                    factors.append(f"HIGH VIX: {vix_value} ({vix_sentiment})")
+                elif vix_value < 12:
+                    score += 5   # Low VIX positive
+                    factors.append(f"LOW VIX: {vix_value} ({vix_sentiment})")
+                else:
+                    factors.append(f"VIX NORMAL: {vix_value}")
             
             # Factor 5: FII/DII Flow (15% weight)
             fii_dii = get_fii_dii_data()
@@ -549,6 +583,8 @@ def generate_premarket_report():
         sgx_nifty = get_sgx_nifty()
         if sgx_nifty:
             report.append(f"<b>🌏 SGX NIFTY:</b> <code>{sgx_nifty}</code>")
+        else:
+            report.append(f"<b>🌏 SGX NIFTY:</b> <code>UNAVAILABLE</code>")
         
         # 2. GLOBAL MARKETS
         global_mkts = get_global_markets()
@@ -564,7 +600,7 @@ def generate_premarket_report():
         
         # 3. PREVIOUS DAY DATA
         prev_data = get_previous_day_data()
-        if 'NIFTY' in prev_data:
+        if prev_data and 'NIFTY' in prev_data:
             n = prev_data['NIFTY']
             change_icon = "🟢" if n['CHANGE'] > 0 else "🔴"
             report.append(f"<b>📈 PREVIOUS DAY (NIFTY):</b>")
@@ -575,7 +611,7 @@ def generate_premarket_report():
             if 'PATTERN' in n:
                 report.append(f"  Pattern: <code>{n['PATTERN']}</code>")
         
-        if 'BANKNIFTY' in prev_data:
+        if prev_data and 'BANKNIFTY' in prev_data:
             bn = prev_data['BANKNIFTY']
             change_icon = "🟢" if bn['CHANGE'] > 0 else "🔴"
             report.append(f"<b>🏦 PREVIOUS DAY (BANKNIFTY):</b>")
@@ -599,6 +635,8 @@ def generate_premarket_report():
         if vix_value:
             report.append(f"<b>😨 INDIA VIX:</b> <code>{vix_value}</code>")
             report.append(f"  Sentiment: <code>{vix_sentiment}</code>")
+        else:
+            report.append(f"<b>😨 INDIA VIX:</b> <code>UNAVAILABLE</code>")
         
         # 6. FII/DII DATA
         fii_dii = get_fii_dii_data()
@@ -669,17 +707,17 @@ def generate_premarket_report():
             bias = gap_prediction['BIAS']
             if "BULLISH" in bias:
                 report.append(f"  • <b>Gap Up Play:</b> Wait for pullback to buy")
-                if 'NIFTY' in prev_data:
+                if prev_data and 'NIFTY' in prev_data:
                     report.append(f"  • <b>Resistance:</b> {prev_data['NIFTY']['HIGH'] + 50}")
                 report.append(f"  • <b>Strategy:</b> Buy on dip with SL below opening low")
             elif "BEARISH" in bias:
                 report.append(f"  • <b>Gap Down Play:</b> Sell on rise")
-                if 'NIFTY' in prev_data:
+                if prev_data and 'NIFTY' in prev_data:
                     report.append(f"  • <b>Support:</b> {prev_data['NIFTY']['LOW'] - 50}")
                 report.append(f"  • <b>Strategy:</b> Sell rallies with SL above opening high")
             else:
                 report.append(f"  • <b>Rangebound Play:</b> Buy support, Sell resistance")
-                if 'NIFTY' in prev_data:
+                if prev_data and 'NIFTY' in prev_data:
                     report.append(f"  • <b>Range:</b> {prev_data['NIFTY']['LOW']} - {prev_data['NIFTY']['HIGH']}")
                 report.append(f"  • <b>Strategy:</b> Fade extremes")
         
