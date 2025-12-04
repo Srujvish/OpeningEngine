@@ -1,29 +1,48 @@
-name: Run Pre-Market Analysis
+name: Institutional Pre-Market Analysis
 
 on:
   schedule:
-    # Runs at 9:00 AM IST daily (3:30 UTC)
-    - cron: '30 3 * * *'
-  workflow_dispatch:
+    # Runs at 2:00 AM IST daily (8:30 PM UTC)
+    - cron: '30 20 * * *'
+  workflow_dispatch:  # Allows manual triggering
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: false
+        default: 'info'
 
 jobs:
-  analyze:
+  run-analysis:
     runs-on: ubuntu-latest
+    environment: production
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-    
-    - name: Run Trading Bot
-      env:
-        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        CHAT_ID: ${{ secrets.CHAT_ID }}
-      run: python ultimate_algo.py
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install additional required packages
+          pip install yfinance pandas requests pytz numpy
+
+      - name: Run Institutional Analysis Engine
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          echo "🚀 Starting Institutional Pre-Market Analysis..."
+          echo "⏰ Time: $(TZ='Asia/Kolkata' date)"
+          python ultimate_algo.py
+
+      - name: Log completion
+        if: always()
+        run: |
+          echo "Analysis completed at $(date)"
+          echo "IST Time: $(TZ='Asia/Kolkata' date)"
