@@ -129,7 +129,7 @@ def get_previous_day_data():
             upper_wick = prev['High'] - max(prev['Close'], prev['Open'])
             lower_wick = min(prev['Close'], prev['Open']) - prev['Low']
             
-            if prev['Close'] > prev['Open']:
+            if float(prev['Close']) > float(prev['Open']):
                 if upper_wick < body * 0.1 and lower_wick < body * 0.1:
                     data['NIFTY']['PATTERN'] = "BULLISH MARUBOZU"
                 elif body > 0:
@@ -170,21 +170,22 @@ def get_last_30min_data():
             # Get last 6 candles (30 minutes)
             last_30min = nifty_5min.iloc[-6:]
             
-            last_30min_high = last_30min['High'].max()
-            last_30min_low = last_30min['Low'].min()
-            last_5min_close = last_30min['Close'].iloc[-1]
+            last_30min_high = float(last_30min['High'].max())
+            last_30min_low = float(last_30min['Low'].min())
+            last_5min_close = float(last_30min['Close'].iloc[-1])
             
-            # Calculate VWAP
-            if last_30min['Volume'].sum() > 0:
-                vwap = (last_30min['Close'] * last_30min['Volume']).sum() / last_30min['Volume'].sum()
+            # Calculate VWAP - FIXED: Convert to float before comparison
+            volume_sum = float(last_30min['Volume'].sum())
+            if volume_sum > 0:
+                vwap = float((last_30min['Close'] * last_30min['Volume']).sum() / volume_sum)
             else:
                 vwap = last_5min_close
             
             return {
-                'HIGH_30M': round(float(last_30min_high), 2),
-                'LOW_30M': round(float(last_30min_low), 2),
-                'LAST_CLOSE': round(float(last_5min_close), 2),
-                'VWAP': round(float(vwap), 2),
+                'HIGH_30M': round(last_30min_high, 2),
+                'LOW_30M': round(last_30min_low, 2),
+                'LAST_CLOSE': round(last_5min_close, 2),
+                'VWAP': round(vwap, 2),
                 'CLOSE_VS_VWAP': "ABOVE" if last_5min_close > vwap else "BELOW"
             }
             
@@ -306,7 +307,7 @@ def calculate_max_pain():
     try:
         nifty = yf.download("^NSEI", period="1d", interval="1d", progress=False)
         if not nifty.empty:
-            current_price = nifty['Close'].iloc[-1]
+            current_price = float(nifty['Close'].iloc[-1])
             
             # Simplified max pain calculation
             # Usually max pain is near current price, rounded to nearest 50
@@ -329,8 +330,8 @@ def calculate_max_pain():
             
             return {
                 'MAX_PAIN': max_pain_strike,
-                'CURRENT': round(float(current_price), 2),
-                'DISTANCE': round(float(distance), 2),
+                'CURRENT': round(current_price, 2),
+                'DISTANCE': round(distance, 2),
                 'DISTANCE_PCT': round(distance_pct, 2),
                 'BIAS': bias
             }
@@ -375,16 +376,21 @@ def get_technical_levels():
             closes = nifty['Close']
             
             # Moving Averages
-            ma20 = closes.rolling(20).mean().iloc[-1]
-            ma50 = closes.rolling(50).mean().iloc[-1] if len(closes) >= 50 else ma20
+            ma20 = float(closes.rolling(20).mean().iloc[-1])
+            
+            # Check if we have enough data for MA50
+            if len(closes) >= 50:
+                ma50 = float(closes.rolling(50).mean().iloc[-1])
+            else:
+                ma50 = ma20
             
             # Support/Resistance
-            recent_high = nifty['High'].iloc[-5:].max()
-            recent_low = nifty['Low'].iloc[-5:].min()
+            recent_high = float(nifty['High'].iloc[-5:].max())
+            recent_low = float(nifty['Low'].iloc[-5:].min())
             
             # Fibonacci levels
-            swing_high = nifty['High'].iloc[-10:].max()
-            swing_low = nifty['Low'].iloc[-10:].min()
+            swing_high = float(nifty['High'].iloc[-10:].max())
+            swing_low = float(nifty['Low'].iloc[-10:].min())
             swing_range = swing_high - swing_low
             
             fib_levels = {
@@ -396,10 +402,10 @@ def get_technical_levels():
             }
             
             return {
-                'MA20': round(float(ma20), 2),
-                'MA50': round(float(ma50), 2),
-                'RESISTANCE': round(float(recent_high), 2),
-                'SUPPORT': round(float(recent_low), 2),
+                'MA20': round(ma20, 2),
+                'MA50': round(ma50, 2),
+                'RESISTANCE': round(recent_high, 2),
+                'SUPPORT': round(recent_low, 2),
                 'FIB_LEVELS': {k: round(float(v), 2) for k, v in fib_levels.items()}
             }
             
@@ -663,15 +669,18 @@ def generate_premarket_report():
             bias = gap_prediction['BIAS']
             if "BULLISH" in bias:
                 report.append(f"  • <b>Gap Up Play:</b> Wait for pullback to buy")
-                report.append(f"  • <b>Resistance:</b> {prev_data['NIFTY']['HIGH'] + 50 if prev_data else 'N/A'}")
+                if 'NIFTY' in prev_data:
+                    report.append(f"  • <b>Resistance:</b> {prev_data['NIFTY']['HIGH'] + 50}")
                 report.append(f"  • <b>Strategy:</b> Buy on dip with SL below opening low")
             elif "BEARISH" in bias:
                 report.append(f"  • <b>Gap Down Play:</b> Sell on rise")
-                report.append(f"  • <b>Support:</b> {prev_data['NIFTY']['LOW'] - 50 if prev_data else 'N/A'}")
+                if 'NIFTY' in prev_data:
+                    report.append(f"  • <b>Support:</b> {prev_data['NIFTY']['LOW'] - 50}")
                 report.append(f"  • <b>Strategy:</b> Sell rallies with SL above opening high")
             else:
                 report.append(f"  • <b>Rangebound Play:</b> Buy support, Sell resistance")
-                report.append(f"  • <b>Range:</b> {prev_data['NIFTY']['LOW'] if prev_data else 'N/A'} - {prev_data['NIFTY']['HIGH'] if prev_data else 'N/A'}")
+                if 'NIFTY' in prev_data:
+                    report.append(f"  • <b>Range:</b> {prev_data['NIFTY']['LOW']} - {prev_data['NIFTY']['HIGH']}")
                 report.append(f"  • <b>Strategy:</b> Fade extremes")
         
         report.append("")
@@ -684,7 +693,8 @@ def generate_premarket_report():
         return "\n".join(report)
         
     except Exception as e:
-        error_msg = f"<b>⚠️ REPORT GENERATION ERROR:</b>\n{str(e)[:200]}"
+        error_msg = f"<b>⚠️ REPORT GENERATION ERROR:</b>\n{str(e)}"
+        print(f"Report generation error: {e}")
         return error_msg
 
 # 🚨 **13. MAIN FUNCTION FOR GITHUB** 🚨
