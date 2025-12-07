@@ -3,7 +3,7 @@ name: 🕘 9:00 AM IST Market Analysis
 on:
   schedule:
     # 9:00 AM IST = 03:30 UTC
-    - cron: "30 3 * * *"
+    - cron: "10 3 * * *"
   
   workflow_dispatch:
 
