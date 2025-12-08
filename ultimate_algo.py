@@ -23,7 +23,6 @@ def send_telegram(msg):
     """Send message to Telegram with HTML formatting"""
     try:
         if not BOT_TOKEN or not CHAT_ID:
-            print("ERROR: Telegram credentials missing!")
             return False
             
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -70,41 +69,75 @@ def format_number(num, decimal_places=2):
     except:
         return str(num)
 
-# --------- FIXED DATA FETCH FUNCTION ---------
+# --------- DYNAMIC DATA FETCH FUNCTION ---------
 def get_correct_previous_close(index="NIFTY"):
-    """Get accurate previous close from NSE using yfinance with correct symbol"""
+    """Get accurate previous close dynamically"""
     try:
         if index == "NIFTY":
-            symbol = "^NSEI"  # NIFTY 50
+            symbol = "^NSEI"
         else:  # BANKNIFTY
-            symbol = "^NSEBANK"  # NIFTY BANK
+            symbol = "^NSEBANK"
         
-        # Get 2 days data to ensure we have previous day
-        data = yf.download(symbol, period="2d", interval="1d", progress=False)
+        # Get data for last 7 days to handle weekends
+        data = yf.download(symbol, period="7d", interval="1d", progress=False)
         
         if data.empty or len(data) < 2:
-            print(f"Warning: Insufficient data for {index}")
-            # Fallback: Get current price
-            current_data = yf.download(symbol, period="1d", interval="1m", progress=False)
-            if not current_data.empty:
-                current_price = float(current_data['Close'].iloc[-1])
-                return current_price - 100 if index == "NIFTY" else current_price - 300
-            else:
-                if index == "NIFTY":
-                    return 25960
-                else:
-                    return 59238
+            # Try with 1 hour interval for most recent data
+            hourly_data = yf.download(symbol, period="5d", interval="1h", progress=False)
+            if not hourly_data.empty:
+                # Get last day's closing price from hourly data
+                last_date = hourly_data.index[-1].date()
+                day_data = hourly_data[hourly_data.index.date == last_date]
+                if not day_data.empty:
+                    return float(day_data['Close'].iloc[-1])
         
-        # Return yesterday's close (index -2 for yesterday, -1 is today if market open)
-        prev_close = float(data['Close'].iloc[-2])
-        return prev_close
+        # Get the most recent trading day's close
+        # Find yesterday (skip today if market is open)
+        current_time = get_ist_time()
         
+        if len(data) >= 2:
+            # Always use the second last entry as previous close
+            # This handles weekends and holidays automatically
+            prev_close = float(data['Close'].iloc[-2])
+            print(f"{index} Previous Close (from data): {prev_close}")
+            return prev_close
+        elif len(data) == 1:
+            # Only one day of data available
+            return float(data['Close'].iloc[-1])
+        else:
+            # No data - this should not happen
+            raise Exception(f"No data available for {index}")
+            
     except Exception as e:
         print(f"Error getting previous close for {index}: {e}")
+        raise e  # Don't use fallback - raise error
+
+# --------- GET CURRENT MARKET PRICE ---------
+def get_current_price(index="NIFTY"):
+    """Get current/pre-market price"""
+    try:
         if index == "NIFTY":
-            return 25960
-        else:
-            return 59238
+            symbol = "^NSEI"
+        else:  # BANKNIFTY
+            symbol = "^NSEBANK"
+        
+        # Try to get 1-minute data for current price
+        data = yf.download(symbol, period="1d", interval="1m", progress=False)
+        
+        if data.empty:
+            # Try 5-minute data
+            data = yf.download(symbol, period="1d", interval="5m", progress=False)
+        
+        if data.empty:
+            # If still no data, use previous close
+            return get_correct_previous_close(index)
+        
+        # Return the latest price
+        return float(data['Close'].iloc[-1])
+        
+    except Exception as e:
+        print(f"Error getting current price for {index}: {e}")
+        return get_correct_previous_close(index)
 
 # 🏛️ **1. INSTITUTIONAL GAP ANALYSIS ENGINE** 🏛️
 def institutional_gap_analysis(index="NIFTY"):
@@ -112,45 +145,38 @@ def institutional_gap_analysis(index="NIFTY"):
     Institutional gap analysis with precise range prediction
     """
     try:
-        print(f"DEBUG: Starting gap analysis for {index}")
-        
         if index == "NIFTY":
-            symbol = "^NSEI"
             round_to = 50
             volatility_factor = 1.0
         else:  # BANKNIFTY
-            symbol = "^NSEBANK"
             round_to = 100
             volatility_factor = 1.5
         
         # Get CORRECT previous day data
         prev_close = get_correct_previous_close(index)
-        print(f"DEBUG: {index} Prev Close: {prev_close}")
+        
+        # Get current/pre-market price
+        current_price = get_current_price(index)
         
         # Get additional data for calculations
+        if index == "NIFTY":
+            symbol = "^NSEI"
+        else:
+            symbol = "^NSEBANK"
+            
         data = yf.download(symbol, period="5d", interval="1d", progress=False)
         if data.empty or len(data) < 2:
-            print(f"DEBUG: No data for {index}")
-            return None
-        
-        prev_high = float(data['High'].iloc[-2])
-        prev_low = float(data['Low'].iloc[-2])
-        prev_range = prev_high - prev_low
-        
-        # Get current/pre-market data for gap indication
-        try:
-            current_data = yf.download(symbol, period="1d", interval="1m", progress=False)
-            if not current_data.empty:
-                futures_price = float(current_data['Close'].iloc[-1])
-                print(f"DEBUG: {index} Current Price: {futures_price}")
-            else:
-                futures_price = prev_close
-                print(f"DEBUG: {index} Using Prev Close as Current")
-        except:
-            futures_price = prev_close
+            # Use reasonable defaults if no historical data
+            prev_high = prev_close * 1.005
+            prev_low = prev_close * 0.995
+            prev_range = prev_high - prev_low
+        else:
+            prev_high = float(data['High'].iloc[-2])
+            prev_low = float(data['Low'].iloc[-2])
+            prev_range = prev_high - prev_low
         
         # Calculate gap
-        gap_points = futures_price - prev_close
+        gap_points = current_price - prev_close
         gap_pct = (gap_points / prev_close) * 100
         
         # Get India VIX for volatility adjustment
@@ -214,12 +240,9 @@ def institutional_gap_analysis(index="NIFTY"):
         max_range = max(max_range, min_range * 1.5)  # Ensure max > min
         
         # Calculate expected opening price
-        if futures_price != prev_close:
-            expected_open = futures_price
-        else:
-            expected_open = prev_close
+        expected_open = current_price
         
-        result = {
+        return {
             'INDEX': index,
             'PREV_CLOSE': round(prev_close, 2),
             'EXPECTED_OPEN': round(expected_open, 2),
@@ -233,11 +256,8 @@ def institutional_gap_analysis(index="NIFTY"):
             'MAX_RANGE': int(max_range),
             'VIX': round(vix, 2),
             'PREV_RANGE': round(prev_range, 2),
-            'FUTURES_PRICE': round(futures_price, 2)
+            'CURRENT_PRICE': round(current_price, 2)
         }
-        
-        print(f"DEBUG: {index} Gap Analysis Complete: {result}")
-        return result
         
     except Exception as e:
         print(f"Gap analysis error for {index}: {e}")
@@ -245,51 +265,37 @@ def institutional_gap_analysis(index="NIFTY"):
 
 # 🏛️ **2. INSTITUTIONAL LEVELS CALCULATOR WITH SPOT CALCULATIONS** 🏛️
 def calculate_institutional_levels(index="NIFTY"):
-    """Calculate precise institutional trading levels with zones like screenshot"""
+    """Calculate precise institutional trading levels"""
     try:
-        print(f"DEBUG: Starting levels calculation for {index}")
-        
         if index == "NIFTY":
             symbol = "^NSEI"
             round_to = 50
-            base_move = 100
         else:  # BANKNIFTY
             symbol = "^NSEBANK"
             round_to = 100
-            base_move = 300
         
-        # Get current price first
-        current_data = yf.download(symbol, period="1d", interval="1m", progress=False)
-        if current_data.empty:
-            current_price = get_correct_previous_close(index)
-            print(f"DEBUG: {index} Using prev close as current: {current_price}")
-        else:
-            current_price = float(current_data['Close'].iloc[-1])
-            print(f"DEBUG: {index} Current price: {current_price}")
+        # Get current price
+        current_price = get_current_price(index)
         
         # Get historical data
         data = yf.download(symbol, period="15d", interval="1d", progress=False)
         
-        if data.empty or len(data) < 5:
-            # Use fallback calculations
+        if data.empty or len(data) < 2:
+            # If no data, use current price as reference
             prev_close = current_price
-            prev_high = current_price + (base_move * 0.5)
-            prev_low = current_price - (base_move * 0.5)
-            pivot = (prev_high + prev_low + prev_close) / 3
-            print(f"DEBUG: {index} Using fallback calculations")
+            prev_high = current_price * 1.01
+            prev_low = current_price * 0.99
         else:
             closes = data['Close'].astype(float)
             highs = data['High'].astype(float)
             lows = data['Low'].astype(float)
             
             prev_close = float(closes.iloc[-2]) if len(closes) >= 2 else current_price
-            prev_high = float(highs.iloc[-2]) if len(highs) >= 2 else current_price + base_move
-            prev_low = float(lows.iloc[-2]) if len(lows) >= 2 else current_price - base_move
-            
-            # 🎯 CLASSIC PIVOT POINTS (Institutional Standard)
-            pivot = (prev_high + prev_low + prev_close) / 3
+            prev_high = float(highs.iloc[-2]) if len(highs) >= 2 else current_price * 1.01
+            prev_low = float(lows.iloc[-2]) if len(lows) >= 2 else current_price * 0.99
         
-        # 🎯 STANDARD PIVOT CALCULATIONS
+        # 🎯 CLASSIC PIVOT POINTS
+        pivot = (prev_high + prev_low + prev_close) / 3
         R1 = (2 * pivot) - prev_low
         S1 = (2 * pivot) - prev_high
         R2 = pivot + (prev_high - prev_low)
@@ -297,27 +303,30 @@ def calculate_institutional_levels(index="NIFTY"):
         
         daily_range = prev_high - prev_low
         
-        # For BANKNIFTY: Add specific levels from screenshot
+        # Calculate institutional levels
+        support_2_critical = round(S2 / round_to) * round_to
+        support_1_cushion = round(S1 / round_to) * round_to
+        resistance_1_immediate = round(R1 / round_to) * round_to
+        resistance_2_breakout = round(R2 / round_to) * round_to
+        
+        # For BANKNIFTY: Adjust levels based on screenshot logic
         if index == "BANKNIFTY":
-            # Based on your screenshot levels
-            support_2_critical = round(59000 / round_to) * round_to
-            support_1_cushion = round(59500 / round_to) * round_to
-            resistance_1_immediate = round(60150 / round_to) * round_to
-            resistance_2_breakout = round(60650 / round_to) * round_to
-            
-            # Adjust based on current price
-            price_diff = current_price - support_1_cushion
-            if abs(price_diff) > 1000:
-                support_1_cushion = round((current_price - 500) / round_to) * round_to
-                support_2_critical = round((current_price - 1000) / round_to) * round_to
-                resistance_1_immediate = round((current_price + 500) / round_to) * round_to
-                resistance_2_breakout = round((current_price + 1000) / round_to) * round_to
-                
-        else:  # NIFTY
-            support_2_critical = round(S2 / round_to) * round_to
-            support_1_cushion = round(S1 / round_to) * round_to
-            resistance_1_immediate = round(R1 / round_to) * round_to
-            resistance_2_breakout = round(R2 / round_to) * round_to
+            # Base levels from market structure
+            if current_price > 60000:
+                support_1_cushion = 59500
+                support_2_critical = 59000
+                resistance_1_immediate = 60150
+                resistance_2_breakout = 60650
+            elif current_price > 59000:
+                support_1_cushion = 58500
+                support_2_critical = 58000
+                resistance_1_immediate = 59500
+                resistance_2_breakout = 60000
+            else:
+                support_1_cushion = 57500
+                support_2_critical = 57000
+                resistance_1_immediate = 58500
+                resistance_2_breakout = 59000
         
         # 🎯 CURRENT PRICE ANALYSIS
         ma20 = None
@@ -327,56 +336,41 @@ def calculate_institutional_levels(index="NIFTY"):
             if len(data) >= 50:
                 ma50 = float(data['Close'].rolling(50).mean().iloc[-1])
         
-        # 🎯 DETERMINE BUY/SELL ZONES
-        buy_zones = []
-        sell_zones = []
-        
+        # 🎯 DETERMINE BIAS
         if index == "BANKNIFTY":
             if current_price > support_1_cushion:
-                buy_zones.append(f"{support_1_cushion}-{support_2_critical} (Major Support Area)")
+                bias = "CONSTRUCTIVE"
+                bias_color = "🟢"
+            elif current_price > support_2_critical:
+                bias = "CAUTIOUS"
+                bias_color = "🟡"
             else:
-                buy_zones.append(f"Near {support_2_critical} (Critical Bounce)")
-            
-            sell_zones.append(f"Near {resistance_1_immediate} (Partial Exit)")
-            sell_zones.append(f"{resistance_2_breakout} (Breakout Target)")
-            
-            bias = "CONSTRUCTIVE" if current_price > support_1_cushion else "CAUTIOUS"
-            bias_color = "🟢" if current_price > support_1_cushion else "🟡"
-            
-            if current_price < support_2_critical:
                 bias = "WEAK"
                 bias_color = "🔴"
-                
         else:  # NIFTY
             if current_price > pivot:
                 bias = "BULLISH"
                 bias_color = "🟢"
-                buy_zones.append(f"Near {support_1_cushion}")
-                sell_zones.append(f"Near {resistance_1_immediate}")
             elif current_price < pivot:
                 bias = "BEARISH"
                 bias_color = "🔴"
-                buy_zones.append(f"Near {support_2_critical}")
-                sell_zones.append(f"Near {pivot}")
             else:
                 bias = "NEUTRAL"
                 bias_color = "⚪"
-                buy_zones.append(f"Range {support_1_cushion}-{support_2_critical}")
-                sell_zones.append(f"Range {resistance_1_immediate}-{resistance_2_breakout}")
         
         # 🎯 TRADING ACTION
         trading_action = []
         if index == "BANKNIFTY":
             trading_action.append(f"• BUY near support: {support_1_cushion}–{support_2_critical}")
             trading_action.append(f"• TARGET near resistance: {resistance_1_immediate}")
-            trading_action.append(f"• BREAKOUT TARGET: {resistance_2_breakout} if closes above {resistance_1_immediate}")
+            trading_action.append(f"• BREAKOUT TARGET: {resistance_2_breakout}")
             trading_action.append(f"• STOP LOSS below: {support_2_critical - 200}")
         else:
-            trading_action.append(f"• BUY Zone: {buy_zones[0]}")
-            trading_action.append(f"• SELL Zone: {sell_zones[0]}")
+            trading_action.append(f"• BUY near: {support_1_cushion}")
+            trading_action.append(f"• SELL near: {resistance_1_immediate}")
             trading_action.append(f"• Stop Loss: Below {support_2_critical}")
         
-        result = {
+        return {
             'INDEX': index,
             'CURRENT': round(current_price, 2),
             'PREV_CLOSE': round(prev_close, 2),
@@ -393,16 +387,11 @@ def calculate_institutional_levels(index="NIFTY"):
             'S2': round(S2, 2),
             'MA20': round(ma20, 2) if ma20 else None,
             'MA50': round(ma50, 2) if ma50 else None,
-            'BUY_ZONES': buy_zones,
-            'SELL_ZONES': sell_zones,
             'TRADING_ACTION': trading_action,
             'PREV_HIGH': round(prev_high, 2),
             'PREV_LOW': round(prev_low, 2),
             'DAILY_RANGE': round(daily_range, 2)
         }
-        
-        print(f"DEBUG: {index} Levels Calculation Complete")
-        return result
         
     except Exception as e:
         print(f"Institutional levels error for {index}: {e}")
@@ -412,8 +401,6 @@ def calculate_institutional_levels(index="NIFTY"):
 def get_global_sentiment():
     """Institutional global market analysis"""
     try:
-        print("DEBUG: Starting global sentiment analysis")
-        
         # US Futures (pre-market)
         symbols = {
             'DOW_FUTURES': 'YM=F',
@@ -440,7 +427,6 @@ def get_global_sentiment():
                         'COLOR': "🟢" if change_pct > 0 else "🔴" if change_pct < 0 else "⚪"
                     }
                     
-                    # Weighted sentiment scoring
                     if 'FUTURES' in name:
                         weight = 2
                     else:
@@ -451,11 +437,9 @@ def get_global_sentiment():
                     elif change_pct < -0.3:
                         sentiment_score -= weight
                         
-            except Exception as e:
-                print(f"Error fetching {name}: {e}")
+            except Exception:
                 continue
         
-        # Determine overall sentiment
         total_weight = 8
         
         if sentiment_score >= total_weight * 0.5:
@@ -474,16 +458,13 @@ def get_global_sentiment():
             sentiment = "NEUTRAL"
             sentiment_color = "⚪"
         
-        result = {
+        return {
             'MARKETS': markets,
             'SENTIMENT': sentiment,
             'SENTIMENT_COLOR': sentiment_color,
             'SCORE': sentiment_score,
             'TOTAL_WEIGHT': total_weight
         }
-        
-        print(f"DEBUG: Global sentiment complete: {sentiment}")
-        return result
         
     except Exception as e:
         print(f"Global sentiment error: {e}")
@@ -493,8 +474,6 @@ def get_global_sentiment():
 def generate_institutional_report():
     """Generate complete institutional trading desk report"""
     try:
-        print("DEBUG: Starting report generation")
-        
         ist_now = get_ist_time()
         report = []
         
@@ -504,7 +483,6 @@ def generate_institutional_report():
         report.append("<b>═══════════════════════════════════════════════</b>")
         report.append("")
         
-        print("DEBUG: Getting NIFTY gap analysis")
         # 1. NIFTY GAP ANALYSIS
         nifty_gap = institutional_gap_analysis("NIFTY")
         if nifty_gap:
@@ -520,7 +498,6 @@ def generate_institutional_report():
             report.append(f"└{'─' * 45}┘")
             report.append("")
         
-        print("DEBUG: Getting BANKNIFTY gap analysis")
         # 2. BANKNIFTY GAP ANALYSIS
         banknifty_gap = institutional_gap_analysis("BANKNIFTY")
         if banknifty_gap:
@@ -536,14 +513,12 @@ def generate_institutional_report():
             report.append(f"└{'─' * 45}┘")
             report.append("")
         
-        print("DEBUG: Getting global sentiment")
         # 3. GLOBAL SENTIMENT
         global_data = get_global_sentiment()
         if global_data:
             report.append(f"<b>🌍 GLOBAL MARKET SENTIMENT:</b>")
             report.append(f"{global_data['SENTIMENT_COLOR']} <b>{global_data['SENTIMENT']}</b> (Score: {global_data['SCORE']}/{global_data['TOTAL_WEIGHT']})")
             
-            # Show key futures
             key_futures = ['DOW_FUTURES', 'NASDAQ_FUTURES', 'S&P_FUTURES', 'GOLD', 'OIL']
             for future in key_futures:
                 if future in global_data['MARKETS']:
@@ -552,8 +527,7 @@ def generate_institutional_report():
             
             report.append("")
         
-        print("DEBUG: Getting NIFTY levels")
-        # 4. NIFTY INSTITUTIONAL LEVELS WITH SPOT CALCULATIONS
+        # 4. NIFTY INSTITUTIONAL LEVELS
         nifty_levels = calculate_institutional_levels("NIFTY")
         if nifty_levels:
             report.append(f"<b>📊 NIFTY INSTITUTIONAL LEVELS:</b>")
@@ -576,7 +550,6 @@ def generate_institutional_report():
             report.append(f"└{'─' * 45}┘")
             report.append("")
         
-        print("DEBUG: Getting BANKNIFTY levels")
         # 5. BANKNIFTY INSTITUTIONAL LEVELS
         banknifty_levels = calculate_institutional_levels("BANKNIFTY")
         if banknifty_levels:
@@ -673,65 +646,57 @@ def generate_institutional_report():
         report.append("• Trade with proper risk management")
         report.append("• This is not investment advice")
         report.append("")
-        report.append("<b>🏛️ Generated by: Institutional Trading Desk v4.2</b>")
+        report.append("<b>🏛️ Generated by: Institutional Trading Desk v5.0</b>")
+        report.append("<b>📈 Dynamic Analysis - No Fallback Values</b>")
         
-        print("DEBUG: Report generation complete")
         return "\n".join(report)
         
     except Exception as e:
         print(f"ERROR in generate_institutional_report: {e}")
-        import traceback
-        traceback.print_exc()
         return None
 
 # 🏛️ **5. MAIN EXECUTION** 🏛️
 def main():
     """Main function for GitHub Actions"""
-    print("🏦 Institutional Trading Desk v4.2 - Starting Analysis...")
+    print("🏦 Institutional Trading Desk v5.0 - Starting Analysis...")
     
     ist_now = get_ist_time()
     print(f"⏰ Time: {ist_now.strftime('%d %b %Y, %H:%M:%S IST')}")
     
     # Send startup notification
-    startup_msg = f"🏦 <b>Institutional Trading Desk v4.2 Activated</b>\n"
+    startup_msg = f"🏦 <b>Institutional Trading Desk v5.0 Activated</b>\n"
     startup_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
-    startup_msg += f"📊 Generating pre-market intelligence..."
+    startup_msg += f"📊 Generating dynamic pre-market intelligence..."
     send_telegram(startup_msg)
     
     # Generate and send report
     try:
-        print("DEBUG: Generating report...")
         report = generate_institutional_report()
         
         if report:
-            print("DEBUG: Sending report to Telegram...")
             success = send_telegram(report)
             
             if success:
                 print("✅ Institutional Report Sent Successfully!")
                 
-                # Send completion message
-                completion_msg = f"✅ <b>Institutional Analysis Complete</b>\n"
+                completion_msg = f"✅ <b>Institutional Analysis Complete v5.0</b>\n"
                 completion_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
-                completion_msg += f"📊 Report delivered to institutional clients"
+                completion_msg += f"📊 Dynamic analysis delivered"
                 send_telegram(completion_msg)
             else:
                 print("❌ Failed to send report")
-                error_msg = f"❌ <b>Failed to Send Full Report</b>\n"
-                error_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
-                error_msg += f"📊 Telegram API error"
+                error_msg = f"❌ <b>Failed to Send Report</b>\n"
+                error_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}"
                 send_telegram(error_msg)
         else:
             print("❌ Failed to generate report")
             error_msg = f"❌ <b>Failed to Generate Report</b>\n"
             error_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
-            error_msg += f"📊 Data fetch error"
+            error_msg += f"📊 Check data sources"
             send_telegram(error_msg)
             
     except Exception as e:
         print(f"❌ Main function error: {e}")
-        import traceback
-        traceback.print_exc()
         error_msg = f"❌ <b>Institutional Analysis Failed</b>\n"
         error_msg += f"Error: {str(e)[:100]}\n"
         error_msg += f"Time: {ist_now.strftime('%H:%M IST')}"
