@@ -49,6 +49,24 @@ def get_ist_time():
         print(f"Date error: {e}")
         return datetime.now()
 
+# --------- HELPER FUNCTION FOR NUMBER FORMATTING ---------
+def format_number(num, decimal_places=2):
+    """Format number with commas for display"""
+    try:
+        if num is None:
+            return "N/A"
+        if isinstance(num, str):
+            return num
+        
+        if decimal_places == 0:
+            return f"{int(num):,}"
+        elif decimal_places == 1:
+            return f"{num:,.1f}"
+        else:
+            return f"{num:,.2f}"
+    except:
+        return str(num)
+
 # --------- FIXED DATA FETCH FUNCTION ---------
 def get_correct_previous_close(index="NIFTY"):
     """Get accurate previous close from NSE using yfinance with correct symbol"""
@@ -296,12 +314,12 @@ def calculate_institutional_levels(index="NIFTY"):
         if index == "BANKNIFTY":
             # Specific buy zones from screenshot
             if current_price > support_1_cushion:
-                buy_zones.append(f"{support_1_cushion:,}-{support_2_critical:,} (Major Support Area)")
+                buy_zones.append(f"{support_1_cushion}-{support_2_critical} (Major Support Area)")
             else:
-                buy_zones.append(f"Near {support_2_critical:,} (Critical Bounce)")
+                buy_zones.append(f"Near {support_2_critical} (Critical Bounce)")
             
-            sell_zones.append(f"Near {resistance_1_immediate:,} (Partial Exit)")
-            sell_zones.append(f"{resistance_2_breakout:,} (Breakout Target)")
+            sell_zones.append(f"Near {resistance_1_immediate} (Partial Exit)")
+            sell_zones.append(f"{resistance_2_breakout} (Breakout Target)")
             
             bias = "CONSTRUCTIVE" if current_price > support_1_cushion else "CAUTIOUS"
             bias_color = "🟢" if current_price > support_1_cushion else "🟡"
@@ -314,30 +332,30 @@ def calculate_institutional_levels(index="NIFTY"):
             if current_price > pivot:
                 bias = "BULLISH"
                 bias_color = "🟢"
-                buy_zones.append(f"Near {support_1_cushion:,}")
-                sell_zones.append(f"Near {resistance_1_immediate:,}")
+                buy_zones.append(f"Near {support_1_cushion}")
+                sell_zones.append(f"Near {resistance_1_immediate}")
             elif current_price < pivot:
                 bias = "BEARISH"
                 bias_color = "🔴"
-                buy_zones.append(f"Near {support_2_critical:,}")
-                sell_zones.append(f"Near {pivot:,}")
+                buy_zones.append(f"Near {support_2_critical}")
+                sell_zones.append(f"Near {pivot}")
             else:
                 bias = "NEUTRAL"
                 bias_color = "⚪"
-                buy_zones.append(f"Range {support_1_cushion:,}-{support_2_critical:,}")
-                sell_zones.append(f"Range {resistance_1_immediate:,}-{resistance_2_breakout:,}")
+                buy_zones.append(f"Range {support_1_cushion}-{support_2_critical}")
+                sell_zones.append(f"Range {resistance_1_immediate}-{resistance_2_breakout}")
         
         # 🎯 TRADING ACTION
         trading_action = []
         if index == "BANKNIFTY":
-            trading_action.append(f"• BUY near support: {support_1_cushion:,}–{support_2_critical:,}")
-            trading_action.append(f"• TARGET near resistance: {resistance_1_immediate:,}")
-            trading_action.append(f"• BREAKOUT TARGET: {resistance_2_breakout:,} if closes above {resistance_1_immediate:,}")
-            trading_action.append(f"• STOP LOSS below: {support_2_critical - 200:,}")
+            trading_action.append(f"• BUY near support: {support_1_cushion}–{support_2_critical}")
+            trading_action.append(f"• TARGET near resistance: {resistance_1_immediate}")
+            trading_action.append(f"• BREAKOUT TARGET: {resistance_2_breakout} if closes above {resistance_1_immediate}")
+            trading_action.append(f"• STOP LOSS below: {support_2_critical - 200}")
         else:
             trading_action.append(f"• BUY Zone: {buy_zones[0]}")
             trading_action.append(f"• SELL Zone: {sell_zones[0]}")
-            trading_action.append(f"• Stop Loss: Below {support_2_critical:,}")
+            trading_action.append(f"• Stop Loss: Below {support_2_critical}")
         
         return {
             'INDEX': index,
@@ -354,8 +372,8 @@ def calculate_institutional_levels(index="NIFTY"):
             'S1': round(S1, 2),
             'R2': round(R2, 2),
             'S2': round(S2, 2),
-            'MA20': round(ma20, 2) if ma20 else "N/A",
-            'MA50': round(ma50, 2) if ma50 else "N/A",
+            'MA20': round(ma20, 2) if ma20 else None,
+            'MA50': round(ma50, 2) if ma50 else None,
             'BUY_ZONES': buy_zones,
             'SELL_ZONES': sell_zones,
             'TRADING_ACTION': trading_action,
@@ -465,12 +483,12 @@ def generate_institutional_trading_plan():
         plan.append(f"┌{'─' * 45}┐")
         
         plan.append(f"│ 📊 <b>KEY LEVELS (Spot):</b>")
-        plan.append(f"│   • Current: <code>{nifty_levels['CURRENT']:,}</code>")
-        plan.append(f"│   • Pivot: <code>{nifty_levels['PIVOT']:,}</code>")
-        plan.append(f"│   • S1 (Support-1): <code>{nifty_levels['SUPPORT_1_CUSHION']:,}</code>")
-        plan.append(f"│   • S2 (Critical): <code>{nifty_levels['SUPPORT_2_CRITICAL']:,}</code>")
-        plan.append(f"│   • R1 (Resistance-1): <code>{nifty_levels['RESISTANCE_1_IMMEDIATE']:,}</code>")
-        plan.append(f"│   • R2 (Breakout): <code>{nifty_levels['RESISTANCE_2_BREAKOUT']:,}</code>")
+        plan.append(f"│   • Current: <code>{format_number(nifty_levels['CURRENT'])}</code>")
+        plan.append(f"│   • Pivot: <code>{format_number(nifty_levels['PIVOT'])}</code>")
+        plan.append(f"│   • S1 (Support-1): <code>{format_number(nifty_levels['SUPPORT_1_CUSHION'], 0)}</code>")
+        plan.append(f"│   • S2 (Critical): <code>{format_number(nifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
+        plan.append(f"│   • R1 (Resistance-1): <code>{format_number(nifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
+        plan.append(f"│   • R2 (Breakout): <code>{format_number(nifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
         plan.append(f"├{'─' * 45}┤")
         
         # Trading action based on levels
@@ -482,18 +500,18 @@ def generate_institutional_trading_plan():
         if current > r1:
             plan.append(f"│ 🟢 <b>BULLISH ABOVE RESISTANCE</b>")
             plan.append(f"│ • Action: Hold longs, trail stops")
-            plan.append(f"│ • Next Target: {nifty_levels['RESISTANCE_2_BREAKOUT']:,}")
-            plan.append(f"│ • Stop Loss: Below {r1:,}")
+            plan.append(f"│ • Next Target: {format_number(nifty_levels['RESISTANCE_2_BREAKOUT'], 0)}")
+            plan.append(f"│ • Stop Loss: Below {format_number(r1, 0)}")
         elif current > s1:
             plan.append(f"│ 🟡 <b>NEUTRAL IN RANGE</b>")
-            plan.append(f"│ • Buy Zone: {s2:,}-{s1:,}")
-            plan.append(f"│ • Sell Zone: Near {r1:,}")
-            plan.append(f"│ • Stop Loss: Below {s2:,}")
+            plan.append(f"│ • Buy Zone: {format_number(s2, 0)}-{format_number(s1, 0)}")
+            plan.append(f"│ • Sell Zone: Near {format_number(r1, 0)}")
+            plan.append(f"│ • Stop Loss: Below {format_number(s2, 0)}")
         else:
             plan.append(f"│ 🔴 <b>BEARISH BELOW SUPPORT</b>")
             plan.append(f"│ • Action: Avoid longs, sell rallies")
-            plan.append(f"│ • Buy only if closes above {s1:,}")
-            plan.append(f"│ • Next Support: {s2:,}")
+            plan.append(f"│ • Buy only if closes above {format_number(s1, 0)}")
+            plan.append(f"│ • Next Support: {format_number(s2, 0)}")
         
         plan.append(f"└{'─' * 45}┘")
         plan.append("")
@@ -504,13 +522,13 @@ def generate_institutional_trading_plan():
         plan.append(f"┌{'─' * 45}┐")
         
         plan.append(f"│ 📊 <b>MAJOR INSTITUTIONAL LEVELS:</b>")
-        plan.append(f"│   • Current: <code>{banknifty_levels['CURRENT']:,}</code>")
-        plan.append(f"│   • Prev Close: <code>{banknifty_levels['PREV_CLOSE']:,}</code>")
-        plan.append(f"│   • Pivot: <code>{banknifty_levels['PIVOT']:,}</code>")
-        plan.append(f"│   • S1 (Cushion): <code>{banknifty_levels['SUPPORT_1_CUSHION']:,}</code>")
-        plan.append(f"│   • S2 (Critical): <code>{banknifty_levels['SUPPORT_2_CRITICAL']:,}</code>")
-        plan.append(f"│   • R1 (Immediate): <code>{banknifty_levels['RESISTANCE_1_IMMEDIATE']:,}</code>")
-        plan.append(f"│   • R2 (Breakout): <code>{banknifty_levels['RESISTANCE_2_BREAKOUT']:,}</code>")
+        plan.append(f"│   • Current: <code>{format_number(banknifty_levels['CURRENT'])}</code>")
+        plan.append(f"│   • Prev Close: <code>{format_number(banknifty_levels['PREV_CLOSE'])}</code>")
+        plan.append(f"│   • Pivot: <code>{format_number(banknifty_levels['PIVOT'])}</code>")
+        plan.append(f"│   • S1 (Cushion): <code>{format_number(banknifty_levels['SUPPORT_1_CUSHION'], 0)}</code>")
+        plan.append(f"│   • S2 (Critical): <code>{format_number(banknifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
+        plan.append(f"│   • R1 (Immediate): <code>{format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
+        plan.append(f"│   • R2 (Breakout): <code>{format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
         plan.append(f"├{'─' * 45}┤")
         
         # Determine condition based on screenshot logic
@@ -520,30 +538,30 @@ def generate_institutional_trading_plan():
         r1 = banknifty_levels['RESISTANCE_1_IMMEDIATE']
         
         if current > s1:
-            condition = f"CONSTRUCTIVE ABOVE {s1:,}"
+            condition = f"CONSTRUCTIVE ABOVE {format_number(s1, 0)}"
             condition_color = "🟢"
             plan.append(f"│ {condition_color} <b>{condition}</b>")
             plan.append(f"│ • Bias: Buy on dips")
-            plan.append(f"│ • Entry Zone: {s2:,}–{s1:,}")
-            plan.append(f"│ • Target 1: {r1:,} (Partial Exit)")
-            plan.append(f"│ • Target 2: {banknifty_levels['RESISTANCE_2_BREAKOUT']:,}")
-            plan.append(f"│ • Stop Loss: Below {s2:,}")
+            plan.append(f"│ • Entry Zone: {format_number(s2, 0)}–{format_number(s1, 0)}")
+            plan.append(f"│ • Target 1: {format_number(r1, 0)} (Partial Exit)")
+            plan.append(f"│ • Target 2: {format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}")
+            plan.append(f"│ • Stop Loss: Below {format_number(s2, 0)}")
         elif current > s2:
-            condition = f"CAUTIOUS IN {s2:,}–{s1:,}"
+            condition = f"CAUTIOUS IN {format_number(s2, 0)}–{format_number(s1, 0)}"
             condition_color = "🟡"
             plan.append(f"│ {condition_color} <b>{condition}</b>")
             plan.append(f"│ • Wait for clear direction")
-            plan.append(f"│ • Buy only above {s1:,}")
-            plan.append(f"│ • Sell if breaks {s2:,}")
-            plan.append(f"│ • Stop Loss: Below {s2-200:,}")
+            plan.append(f"│ • Buy only above {format_number(s1, 0)}")
+            plan.append(f"│ • Sell if breaks {format_number(s2, 0)}")
+            plan.append(f"│ • Stop Loss: Below {format_number(s2-200, 0)}")
         else:
-            condition = f"WEAK BELOW {s2:,}"
+            condition = f"WEAK BELOW {format_number(s2, 0)}"
             condition_color = "🔴"
             plan.append(f"│ {condition_color} <b>{condition}</b>")
             plan.append(f"│ • Avoid longs")
-            plan.append(f"│ • Sell rallies to {s1:,}")
-            plan.append(f"│ • Next Support: {s2-500:,}")
-            plan.append(f"│ • Stop Loss: Above {s1:,}")
+            plan.append(f"│ • Sell rallies to {format_number(s1, 0)}")
+            plan.append(f"│ • Next Support: {format_number(s2-500, 0)}")
+            plan.append(f"│ • Stop Loss: Above {format_number(s1, 0)}")
         
         plan.append(f"└{'─' * 45}┘")
         plan.append("")
@@ -553,17 +571,17 @@ def generate_institutional_trading_plan():
     
     if banknifty_levels:
         plan.append(f"<b>🏦 BANKNIFTY:</b>")
-        plan.append(f"• BUY near support: <code>{banknifty_levels['SUPPORT_1_CUSHION']:,}–{banknifty_levels['SUPPORT_2_CRITICAL']:,}</code>")
-        plan.append(f"• TARGET near resistance: <code>{banknifty_levels['RESISTANCE_1_IMMEDIATE']:,}</code>")
-        plan.append(f"• BREAKOUT TARGET: <code>{banknifty_levels['RESISTANCE_2_BREAKOUT']:,}</code>")
-        plan.append(f"• STOP LOSS below: <code>{banknifty_levels['SUPPORT_2_CRITICAL']-200:,}</code>")
+        plan.append(f"• BUY near support: <code>{format_number(banknifty_levels['SUPPORT_1_CUSHION'], 0)}–{format_number(banknifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
+        plan.append(f"• TARGET near resistance: <code>{format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
+        plan.append(f"• BREAKOUT TARGET: <code>{format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
+        plan.append(f"• STOP LOSS below: <code>{format_number(banknifty_levels['SUPPORT_2_CRITICAL']-200, 0)}</code>")
         plan.append("")
     
     if nifty_levels:
         plan.append(f"<b>📈 NIFTY:</b>")
-        plan.append(f"• BUY Zone: <code>{nifty_levels['BUY_ZONES'][0]}</code>")
-        plan.append(f"• SELL Zone: <code>{nifty_levels['SELL_ZONES'][0]}</code>")
-        plan.append(f"• Stop Loss: Below <code>{nifty_levels['SUPPORT_2_CRITICAL']:,}</code>")
+        plan.append(f"• BUY Zone: <code>{banknifty_levels['BUY_ZONES'][0] if banknifty_levels else 'N/A'}</code>")
+        plan.append(f"• SELL Zone: <code>{banknifty_levels['SELL_ZONES'][0] if banknifty_levels else 'N/A'}</code>")
+        plan.append(f"• Stop Loss: Below <code>{format_number(nifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
         plan.append("")
     
     # TIME-BASED GUIDANCE
@@ -604,8 +622,8 @@ def generate_institutional_report():
         report.append(f"<b>📈 NIFTY 50 OPENING PROJECTION:</b>")
         report.append(f"┌{'─' * 45}┐")
         report.append(f"│ {nifty_gap['COLOR']} <b>{nifty_gap['GAP_TYPE']}</b>")
-        report.append(f"│ • Prev Close: <code>{nifty_gap['PREV_CLOSE']:,}</code>")
-        report.append(f"│ • Expected Open: <code>{nifty_gap['EXPECTED_OPEN']:,}</code>")
+        report.append(f"│ • Prev Close: <code>{format_number(nifty_gap['PREV_CLOSE'])}</code>")
+        report.append(f"│ • Expected Open: <code>{format_number(nifty_gap['EXPECTED_OPEN'])}</code>")
         report.append(f"│ • Gap: <code>{nifty_gap['GAP_POINTS']:+,.0f} pts ({nifty_gap['GAP_PCT']:+.2f}%)</code>")
         report.append(f"│ • Opening Range: <code>{nifty_gap['MIN_RANGE']}-{nifty_gap['MAX_RANGE']} pts</code>")
         report.append(f"│ • Sentiment: <code>{nifty_gap['SENTIMENT']}</code>")
@@ -619,8 +637,8 @@ def generate_institutional_report():
         report.append(f"<b>🏦 BANKNIFTY OPENING PROJECTION:</b>")
         report.append(f"┌{'─' * 45}┐")
         report.append(f"│ {banknifty_gap['COLOR']} <b>{banknifty_gap['GAP_TYPE']}</b>")
-        report.append(f"│ • Prev Close: <code>{banknifty_gap['PREV_CLOSE']:,}</code>")
-        report.append(f"│ • Expected Open: <code>{banknifty_gap['EXPECTED_OPEN']:,}</code>")
+        report.append(f"│ • Prev Close: <code>{format_number(banknifty_gap['PREV_CLOSE'])}</code>")
+        report.append(f"│ • Expected Open: <code>{format_number(banknifty_gap['EXPECTED_OPEN'])}</code>")
         report.append(f"│ • Gap: <code>{banknifty_gap['GAP_POINTS']:+,.0f} pts ({banknifty_gap['GAP_PCT']:+.2f}%)</code>")
         report.append(f"│ • Opening Range: <code>{banknifty_gap['MIN_RANGE']}-{banknifty_gap['MAX_RANGE']} pts</code>")
         report.append(f"│ • Sentiment: <code>{banknifty_gap['SENTIMENT']}</code>")
@@ -639,7 +657,7 @@ def generate_institutional_report():
         for future in key_futures:
             if future in global_data['MARKETS']:
                 data = global_data['MARKETS'][future]
-                report.append(f"• {future.replace('_', ' ')}: {data['COLOR']}<code>{data['CHANGE']:+.2f}%</code> @ {data['PRICE']}")
+                report.append(f"• {future.replace('_', ' ')}: {data['COLOR']}<code>{data['CHANGE']:+.2f}%</code> @ {format_number(data['PRICE'])}")
         
         report.append("")
     
@@ -648,15 +666,17 @@ def generate_institutional_report():
     if nifty_levels:
         report.append(f"<b>📊 NIFTY INSTITUTIONAL LEVELS (Spot Calculations):</b>")
         report.append(f"┌{'─' * 45}┐")
-        report.append(f"│ Current: <code>{nifty_levels['CURRENT']:,}</code> {nifty_levels['BIAS_COLOR']} {nifty_levels['BIAS']}")
-        report.append(f"│ Prev Close: <code>{nifty_levels['PREV_CLOSE']:,}</code>")
-        report.append(f"│ Pivot: <code>{nifty_levels['PIVOT']:,}</code> | MA20: <code>{nifty_levels['MA20']:,}</code>")
+        report.append(f"│ Current: <code>{format_number(nifty_levels['CURRENT'])}</code> {nifty_levels['BIAS_COLOR']} {nifty_levels['BIAS']}")
+        report.append(f"│ Prev Close: <code>{format_number(nifty_levels['PREV_CLOSE'])}</code>")
+        report.append(f"│ Pivot: <code>{format_number(nifty_levels['PIVOT'])}</code>")
+        if nifty_levels['MA20']:
+            report.append(f"│ MA20: <code>{format_number(nifty_levels['MA20'])}</code>")
         report.append(f"├{'─' * 45}┤")
         report.append(f"│ 🎯 <b>MAJOR SUPPORT/RESISTANCE:</b>")
-        report.append(f"│   • S1 (Cushion): <code>{nifty_levels['SUPPORT_1_CUSHION']:,}</code>")
-        report.append(f"│   • S2 (Critical): <code>{nifty_levels['SUPPORT_2_CRITICAL']:,}</code>")
-        report.append(f"│   • R1 (Immediate): <code>{nifty_levels['RESISTANCE_1_IMMEDIATE']:,}</code>")
-        report.append(f"│   • R2 (Breakout): <code>{nifty_levels['RESISTANCE_2_BREAKOUT']:,}</code>")
+        report.append(f"│   • S1 (Cushion): <code>{format_number(nifty_levels['SUPPORT_1_CUSHION'], 0)}</code>")
+        report.append(f"│   • S2 (Critical): <code>{format_number(nifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
+        report.append(f"│   • R1 (Immediate): <code>{format_number(nifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
+        report.append(f"│   • R2 (Breakout): <code>{format_number(nifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
         report.append(f"├{'─' * 45}┤")
         report.append(f"│ 💡 <b>TRADING ACTION:</b>")
         for action in nifty_levels['TRADING_ACTION']:
@@ -669,9 +689,9 @@ def generate_institutional_report():
     if banknifty_levels:
         report.append(f"<b>🏦 BANKNIFTY INSTITUTIONAL LEVELS (Based on Analysis):</b>")
         report.append(f"┌{'─' * 45}┐")
-        report.append(f"│ Current: <code>{banknifty_levels['CURRENT']:,.0f}</code>")
-        report.append(f"│ Prev Close: <code>{banknifty_levels['PREV_CLOSE']:,.0f}</code>")
-        report.append(f"│ Daily Range: <code>{banknifty_levels['DAILY_RANGE']:,.0f}</code> pts")
+        report.append(f"│ Current: <code>{format_number(banknifty_levels['CURRENT'], 0)}</code>")
+        report.append(f"│ Prev Close: <code>{format_number(banknifty_levels['PREV_CLOSE'], 0)}</code>")
+        report.append(f"│ Daily Range: <code>{format_number(banknifty_levels['DAILY_RANGE'], 0)}</code> pts")
         report.append(f"├{'─' * 45}┤")
         report.append(f"│ 🎯 <b>KEY LEVELS TO WATCH:</b>")
         
@@ -681,30 +701,30 @@ def generate_institutional_report():
         s2 = banknifty_levels['SUPPORT_2_CRITICAL']
         
         if current > s1:
-            condition = f"CONSTRUCTIVE ABOVE {s1:,}"
+            condition = f"CONSTRUCTIVE ABOVE {format_number(s1, 0)}"
             condition_color = "🟢"
         elif current > s2:
-            condition = f"CAUTIOUS IN {s2:,}-{s1:,}"
+            condition = f"CAUTIOUS IN {format_number(s2, 0)}-{format_number(s1, 0)}"
             condition_color = "🟡"
         else:
-            condition = f"WEAK BELOW {s2:,}"
+            condition = f"WEAK BELOW {format_number(s2, 0)}"
             condition_color = "🔴"
         
         report.append(f"│ {condition_color} <b>{condition}</b>")
         report.append(f"│")
         report.append(f"│ 📍 <b>Support Zones:</b>")
-        report.append(f"│   • ~{s1:,} - Near-term cushion (Buy Zone)")
-        report.append(f"│   • ~{s2:,} - Critical support (Stop Loss Trigger)")
+        report.append(f"│   • ~{format_number(s1, 0)} - Near-term cushion (Buy Zone)")
+        report.append(f"│   • ~{format_number(s2, 0)} - Critical support (Stop Loss Trigger)")
         report.append(f"│")
         report.append(f"│ 📍 <b>Resistance Zones:</b>")
-        report.append(f"│   • ~{banknifty_levels['RESISTANCE_1_IMMEDIATE']:,} - Immediate target")
-        report.append(f"│   • ~{banknifty_levels['RESISTANCE_2_BREAKOUT']:,} - Bullish breakout zone")
+        report.append(f"│   • ~{format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)} - Immediate target")
+        report.append(f"│   • ~{format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)} - Bullish breakout zone")
         report.append(f"├{'─' * 45}┤")
         report.append(f"│ 💡 <b>INTRADAY PLAN:</b>")
-        report.append(f"│   • BUY near: {s1:,}–{s2:,}")
-        report.append(f"│   • TARGET: {banknifty_levels['RESISTANCE_1_IMMEDIATE']:,}")
-        report.append(f"│   • STOP LOSS: Below {s2-200:,}")
-        report.append(f"│   • BREAKOUT: If above {banknifty_levels['RESISTANCE_1_IMMEDIATE']:,}, target {banknifty_levels['RESISTANCE_2_BREAKOUT']:,}")
+        report.append(f"│   • BUY near: {format_number(s1, 0)}–{format_number(s2, 0)}")
+        report.append(f"│   • TARGET: {format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}")
+        report.append(f"│   • STOP LOSS: Below {format_number(s2-200, 0)}")
+        report.append(f"│   • BREAKOUT: If above {format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}, target {format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}")
         report.append(f"└{'─' * 45}┘")
         report.append("")
     
