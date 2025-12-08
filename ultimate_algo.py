@@ -22,6 +22,10 @@ CHAT_ID = os.environ.get("CHAT_ID")
 def send_telegram(msg):
     """Send message to Telegram with HTML formatting"""
     try:
+        if not BOT_TOKEN or not CHAT_ID:
+            print("ERROR: Telegram credentials missing!")
+            return False
+            
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
         response = requests.post(url, json=payload, timeout=10)
@@ -39,7 +43,6 @@ def get_ist_time():
         utc_with_tz = pytz.utc.localize(utc_now)
         ist_now = utc_with_tz.astimezone(ist)
         
-        # Force correct year (2024)
         current_year = datetime.now().year
         if ist_now.year != current_year:
             ist_now = ist_now.replace(year=current_year)
@@ -86,6 +89,11 @@ def get_correct_previous_close(index="NIFTY"):
             if not current_data.empty:
                 current_price = float(current_data['Close'].iloc[-1])
                 return current_price - 100 if index == "NIFTY" else current_price - 300
+            else:
+                if index == "NIFTY":
+                    return 25960
+                else:
+                    return 59238
         
         # Return yesterday's close (index -2 for yesterday, -1 is today if market open)
         prev_close = float(data['Close'].iloc[-2])
@@ -93,11 +101,10 @@ def get_correct_previous_close(index="NIFTY"):
         
     except Exception as e:
         print(f"Error getting previous close for {index}: {e}")
-        # Return fallback values based on index
         if index == "NIFTY":
-            return 25960  # Fallback value
+            return 25960
         else:
-            return 59238  # Fallback value
+            return 59238
 
 # 🏛️ **1. INSTITUTIONAL GAP ANALYSIS ENGINE** 🏛️
 def institutional_gap_analysis(index="NIFTY"):
@@ -105,23 +112,25 @@ def institutional_gap_analysis(index="NIFTY"):
     Institutional gap analysis with precise range prediction
     """
     try:
+        print(f"DEBUG: Starting gap analysis for {index}")
+        
         if index == "NIFTY":
             symbol = "^NSEI"
-            futures_symbol = "^NSEI"  # Use same symbol for gap calculation
             round_to = 50
             volatility_factor = 1.0
         else:  # BANKNIFTY
             symbol = "^NSEBANK"
-            futures_symbol = "^NSEBANK"  # Use same symbol for gap calculation
             round_to = 100
             volatility_factor = 1.5
         
         # Get CORRECT previous day data
         prev_close = get_correct_previous_close(index)
+        print(f"DEBUG: {index} Prev Close: {prev_close}")
         
         # Get additional data for calculations
         data = yf.download(symbol, period="5d", interval="1d", progress=False)
         if data.empty or len(data) < 2:
+            print(f"DEBUG: No data for {index}")
             return None
         
         prev_high = float(data['High'].iloc[-2])
@@ -129,13 +138,14 @@ def institutional_gap_analysis(index="NIFTY"):
         prev_range = prev_high - prev_low
         
         # Get current/pre-market data for gap indication
-        # Try to get pre-market data (use 1m interval for latest)
         try:
             current_data = yf.download(symbol, period="1d", interval="1m", progress=False)
             if not current_data.empty:
                 futures_price = float(current_data['Close'].iloc[-1])
+                print(f"DEBUG: {index} Current Price: {futures_price}")
             else:
                 futures_price = prev_close
+                print(f"DEBUG: {index} Using Prev Close as Current")
         except:
             futures_price = prev_close
         
@@ -209,7 +219,7 @@ def institutional_gap_analysis(index="NIFTY"):
         else:
             expected_open = prev_close
         
-        return {
+        result = {
             'INDEX': index,
             'PREV_CLOSE': round(prev_close, 2),
             'EXPECTED_OPEN': round(expected_open, 2),
@@ -226,6 +236,9 @@ def institutional_gap_analysis(index="NIFTY"):
             'FUTURES_PRICE': round(futures_price, 2)
         }
         
+        print(f"DEBUG: {index} Gap Analysis Complete: {result}")
+        return result
+        
     except Exception as e:
         print(f"Gap analysis error for {index}: {e}")
         return None
@@ -234,6 +247,8 @@ def institutional_gap_analysis(index="NIFTY"):
 def calculate_institutional_levels(index="NIFTY"):
     """Calculate precise institutional trading levels with zones like screenshot"""
     try:
+        print(f"DEBUG: Starting levels calculation for {index}")
+        
         if index == "NIFTY":
             symbol = "^NSEI"
             round_to = 50
@@ -247,8 +262,10 @@ def calculate_institutional_levels(index="NIFTY"):
         current_data = yf.download(symbol, period="1d", interval="1m", progress=False)
         if current_data.empty:
             current_price = get_correct_previous_close(index)
+            print(f"DEBUG: {index} Using prev close as current: {current_price}")
         else:
             current_price = float(current_data['Close'].iloc[-1])
+            print(f"DEBUG: {index} Current price: {current_price}")
         
         # Get historical data
         data = yf.download(symbol, period="15d", interval="1d", progress=False)
@@ -259,6 +276,7 @@ def calculate_institutional_levels(index="NIFTY"):
             prev_high = current_price + (base_move * 0.5)
             prev_low = current_price - (base_move * 0.5)
             pivot = (prev_high + prev_low + prev_close) / 3
+            print(f"DEBUG: {index} Using fallback calculations")
         else:
             closes = data['Close'].astype(float)
             highs = data['High'].astype(float)
@@ -277,21 +295,19 @@ def calculate_institutional_levels(index="NIFTY"):
         R2 = pivot + (prev_high - prev_low)
         S2 = pivot - (prev_high - prev_low)
         
-        # 🎯 FIBONACCI EXTENSIONS (Common institutional levels)
         daily_range = prev_high - prev_low
         
         # For BANKNIFTY: Add specific levels from screenshot
         if index == "BANKNIFTY":
             # Based on your screenshot levels
-            support_2_critical = round(59000 / round_to) * round_to  # Critical support
-            support_1_cushion = round(59500 / round_to) * round_to   # Near-term cushion
-            resistance_1_immediate = round(60150 / round_to) * round_to  # Immediate resistance
-            resistance_2_breakout = round(60650 / round_to) * round_to   # Bullish breakout zone (mid of 60500-60800)
+            support_2_critical = round(59000 / round_to) * round_to
+            support_1_cushion = round(59500 / round_to) * round_to
+            resistance_1_immediate = round(60150 / round_to) * round_to
+            resistance_2_breakout = round(60650 / round_to) * round_to
             
             # Adjust based on current price
             price_diff = current_price - support_1_cushion
             if abs(price_diff) > 1000:
-                # If far from levels, recalculate based on current price
                 support_1_cushion = round((current_price - 500) / round_to) * round_to
                 support_2_critical = round((current_price - 1000) / round_to) * round_to
                 resistance_1_immediate = round((current_price + 500) / round_to) * round_to
@@ -316,7 +332,6 @@ def calculate_institutional_levels(index="NIFTY"):
         sell_zones = []
         
         if index == "BANKNIFTY":
-            # Specific buy zones from screenshot
             if current_price > support_1_cushion:
                 buy_zones.append(f"{support_1_cushion}-{support_2_critical} (Major Support Area)")
             else:
@@ -361,7 +376,7 @@ def calculate_institutional_levels(index="NIFTY"):
             trading_action.append(f"• SELL Zone: {sell_zones[0]}")
             trading_action.append(f"• Stop Loss: Below {support_2_critical}")
         
-        return {
+        result = {
             'INDEX': index,
             'CURRENT': round(current_price, 2),
             'PREV_CLOSE': round(prev_close, 2),
@@ -386,6 +401,9 @@ def calculate_institutional_levels(index="NIFTY"):
             'DAILY_RANGE': round(daily_range, 2)
         }
         
+        print(f"DEBUG: {index} Levels Calculation Complete")
+        return result
+        
     except Exception as e:
         print(f"Institutional levels error for {index}: {e}")
         return None
@@ -394,13 +412,14 @@ def calculate_institutional_levels(index="NIFTY"):
 def get_global_sentiment():
     """Institutional global market analysis"""
     try:
+        print("DEBUG: Starting global sentiment analysis")
+        
         # US Futures (pre-market)
         symbols = {
             'DOW_FUTURES': 'YM=F',
             'NASDAQ_FUTURES': 'NQ=F',
             'S&P_FUTURES': 'ES=F',
             'GOLD': 'GC=F',
-            'USD/INR': 'INR=X',
             'OIL': 'CL=F'
         }
         
@@ -437,7 +456,7 @@ def get_global_sentiment():
                 continue
         
         # Determine overall sentiment
-        total_weight = 8  # Approximate total weight
+        total_weight = 8
         
         if sentiment_score >= total_weight * 0.5:
             sentiment = "STRONGLY POSITIVE"
@@ -455,7 +474,7 @@ def get_global_sentiment():
             sentiment = "NEUTRAL"
             sentiment_color = "⚪"
         
-        return {
+        result = {
             'MARKETS': markets,
             'SENTIMENT': sentiment,
             'SENTIMENT_COLOR': sentiment_color,
@@ -463,365 +482,260 @@ def get_global_sentiment():
             'TOTAL_WEIGHT': total_weight
         }
         
+        print(f"DEBUG: Global sentiment complete: {sentiment}")
+        return result
+        
     except Exception as e:
         print(f"Global sentiment error: {e}")
         return None
 
-# 🏛️ **4. INSTITUTIONAL TRADING PLAN WITH SPECIFIC LEVELS** 🏛️
-def generate_institutional_trading_plan():
-    """Generate specific institutional trading plan with levels"""
-    
-    plan = []
-    
-    # Get analyses for both indices
-    nifty_gap = institutional_gap_analysis("NIFTY")
-    banknifty_gap = institutional_gap_analysis("BANKNIFTY")
-    nifty_levels = calculate_institutional_levels("NIFTY")
-    banknifty_levels = calculate_institutional_levels("BANKNIFTY")
-    
-    plan.append("<b>🎯 INSTITUTIONAL TRADING PLAN</b>")
-    plan.append("")
-    
-    # NIFTY STRATEGY WITH SPECIFIC LEVELS
-    if nifty_gap and nifty_levels:
-        plan.append(f"<b>📈 NIFTY 50 STRATEGY:</b>")
-        plan.append(f"┌{'─' * 45}┐")
-        
-        plan.append(f"│ 📊 <b>KEY LEVELS (Spot):</b>")
-        plan.append(f"│   • Current: <code>{format_number(nifty_levels['CURRENT'])}</code>")
-        plan.append(f"│   • Pivot: <code>{format_number(nifty_levels['PIVOT'])}</code>")
-        plan.append(f"│   • S1 (Support-1): <code>{format_number(nifty_levels['SUPPORT_1_CUSHION'], 0)}</code>")
-        plan.append(f"│   • S2 (Critical): <code>{format_number(nifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
-        plan.append(f"│   • R1 (Resistance-1): <code>{format_number(nifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
-        plan.append(f"│   • R2 (Breakout): <code>{format_number(nifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
-        plan.append(f"├{'─' * 45}┤")
-        
-        # Trading action based on levels
-        current = nifty_levels['CURRENT']
-        s1 = nifty_levels['SUPPORT_1_CUSHION']
-        s2 = nifty_levels['SUPPORT_2_CRITICAL']
-        r1 = nifty_levels['RESISTANCE_1_IMMEDIATE']
-        
-        if current > r1:
-            plan.append(f"│ 🟢 <b>BULLISH ABOVE RESISTANCE</b>")
-            plan.append(f"│ • Action: Hold longs, trail stops")
-            plan.append(f"│ • Next Target: {format_number(nifty_levels['RESISTANCE_2_BREAKOUT'], 0)}")
-            plan.append(f"│ • Stop Loss: Below {format_number(r1, 0)}")
-        elif current > s1:
-            plan.append(f"│ 🟡 <b>NEUTRAL IN RANGE</b>")
-            plan.append(f"│ • Buy Zone: {format_number(s2, 0)}-{format_number(s1, 0)}")
-            plan.append(f"│ • Sell Zone: Near {format_number(r1, 0)}")
-            plan.append(f"│ • Stop Loss: Below {format_number(s2, 0)}")
-        else:
-            plan.append(f"│ 🔴 <b>BEARISH BELOW SUPPORT</b>")
-            plan.append(f"│ • Action: Avoid longs, sell rallies")
-            plan.append(f"│ • Buy only if closes above {format_number(s1, 0)}")
-            plan.append(f"│ • Next Support: {format_number(s2, 0)}")
-        
-        plan.append(f"└{'─' * 45}┘")
-        plan.append("")
-    
-    # BANKNIFTY STRATEGY WITH SPECIFIC LEVELS FROM SCREENSHOT
-    if banknifty_gap and banknifty_levels:
-        plan.append(f"<b>🏦 BANKNIFTY STRATEGY:</b>")
-        plan.append(f"┌{'─' * 45}┐")
-        
-        plan.append(f"│ 📊 <b>MAJOR INSTITUTIONAL LEVELS:</b>")
-        plan.append(f"│   • Current: <code>{format_number(banknifty_levels['CURRENT'])}</code>")
-        plan.append(f"│   • Prev Close: <code>{format_number(banknifty_levels['PREV_CLOSE'])}</code>")
-        plan.append(f"│   • Pivot: <code>{format_number(banknifty_levels['PIVOT'])}</code>")
-        plan.append(f"│   • S1 (Cushion): <code>{format_number(banknifty_levels['SUPPORT_1_CUSHION'], 0)}</code>")
-        plan.append(f"│   • S2 (Critical): <code>{format_number(banknifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
-        plan.append(f"│   • R1 (Immediate): <code>{format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
-        plan.append(f"│   • R2 (Breakout): <code>{format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
-        plan.append(f"├{'─' * 45}┤")
-        
-        # Determine condition based on screenshot logic
-        current = banknifty_levels['CURRENT']
-        s1 = banknifty_levels['SUPPORT_1_CUSHION']
-        s2 = banknifty_levels['SUPPORT_2_CRITICAL']
-        r1 = banknifty_levels['RESISTANCE_1_IMMEDIATE']
-        
-        if current > s1:
-            condition = f"CONSTRUCTIVE ABOVE {format_number(s1, 0)}"
-            condition_color = "🟢"
-            plan.append(f"│ {condition_color} <b>{condition}</b>")
-            plan.append(f"│ • Bias: Buy on dips")
-            plan.append(f"│ • Entry Zone: {format_number(s2, 0)}–{format_number(s1, 0)}")
-            plan.append(f"│ • Target 1: {format_number(r1, 0)} (Partial Exit)")
-            plan.append(f"│ • Target 2: {format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}")
-            plan.append(f"│ • Stop Loss: Below {format_number(s2, 0)}")
-        elif current > s2:
-            condition = f"CAUTIOUS IN {format_number(s2, 0)}–{format_number(s1, 0)}"
-            condition_color = "🟡"
-            plan.append(f"│ {condition_color} <b>{condition}</b>")
-            plan.append(f"│ • Wait for clear direction")
-            plan.append(f"│ • Buy only above {format_number(s1, 0)}")
-            plan.append(f"│ • Sell if breaks {format_number(s2, 0)}")
-            plan.append(f"│ • Stop Loss: Below {format_number(s2-200, 0)}")
-        else:
-            condition = f"WEAK BELOW {format_number(s2, 0)}"
-            condition_color = "🔴"
-            plan.append(f"│ {condition_color} <b>{condition}</b>")
-            plan.append(f"│ • Avoid longs")
-            plan.append(f"│ • Sell rallies to {format_number(s1, 0)}")
-            plan.append(f"│ • Next Support: {format_number(s2-500, 0)}")
-            plan.append(f"│ • Stop Loss: Above {format_number(s1, 0)}")
-        
-        plan.append(f"└{'─' * 45}┘")
-        plan.append("")
-    
-    # SPECIFIC BUY/SELL INSTRUCTIONS FROM SCREENSHOT
-    plan.append("<b>🎯 SPECIFIC TRADING ACTIONS (Based on Levels):</b>")
-    
-    if banknifty_levels:
-        plan.append(f"<b>🏦 BANKNIFTY:</b>")
-        plan.append(f"• BUY near support: <code>{format_number(banknifty_levels['SUPPORT_1_CUSHION'], 0)}–{format_number(banknifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
-        plan.append(f"• TARGET near resistance: <code>{format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
-        plan.append(f"• BREAKOUT TARGET: <code>{format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
-        plan.append(f"• STOP LOSS below: <code>{format_number(banknifty_levels['SUPPORT_2_CRITICAL']-200, 0)}</code>")
-        plan.append("")
-    
-    if nifty_levels:
-        plan.append(f"<b>📈 NIFTY:</b>")
-        plan.append(f"• BUY Zone: <code>{nifty_levels['BUY_ZONES'][0]}</code>")
-        plan.append(f"• SELL Zone: <code>{nifty_levels['SELL_ZONES'][0]}</code>")
-        plan.append(f"• Stop Loss: Below <code>{format_number(nifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
-        plan.append("")
-    
-    # TIME-BASED GUIDANCE
-    plan.append("<b>⏰ INSTITUTIONAL TIMING:</b>")
-    plan.append("• <b>09:15-09:30:</b> Avoid entries - Market finding equilibrium")
-    plan.append("• <b>09:30-10:30:</b> Optimal entry window - Institutional participation")
-    plan.append("• <b>10:30-14:00:</b> Monitor for trend confirmation")
-    plan.append("• <b>14:00-15:00:</b> Square off intraday - Reduce overnight risk")
-    plan.append("• <b>15:00-15:30:</b> Only carry high-conviction positions")
-    plan.append("")
-    
-    # RISK PARAMETERS
-    plan.append("<b>⚠️ INSTITUTIONAL RISK PARAMETERS:</b>")
-    plan.append("• Position Size: 1-3% of capital per trade")
-    plan.append("• Risk-Reward: Minimum 1:3 ratio")
-    plan.append("• Max Daily Drawdown: 2%")
-    plan.append("• Consecutive Losses: Max 2, then stop trading")
-    plan.append("• Portfolio Heat: Max 15% at any time")
-    
-    return "\n".join(plan)
-
-# 🏛️ **5. GENERATE COMPLETE INSTITUTIONAL REPORT** 🏛️
+# 🏛️ **4. GENERATE COMPLETE INSTITUTIONAL REPORT** 🏛️
 def generate_institutional_report():
     """Generate complete institutional trading desk report"""
-    
-    ist_now = get_ist_time()
-    report = []
-    
-    # HEADER
-    report.append(f"<b>🏦 INSTITUTIONAL TRADING DESK - PRE-MARKET INTELLIGENCE</b>")
-    report.append(f"<b>📅</b> {ist_now.strftime('%d %b %Y, %A')} | <b>⏰</b> {ist_now.strftime('%H:%M')} IST")
-    report.append("<b>═══════════════════════════════════════════════</b>")
-    report.append("")
-    
-    # 1. NIFTY GAP ANALYSIS
-    nifty_gap = institutional_gap_analysis("NIFTY")
-    if nifty_gap:
-        report.append(f"<b>📈 NIFTY 50 OPENING PROJECTION:</b>")
-        report.append(f"┌{'─' * 45}┐")
-        report.append(f"│ {nifty_gap['COLOR']} <b>{nifty_gap['GAP_TYPE']}</b>")
-        report.append(f"│ • Prev Close: <code>{format_number(nifty_gap['PREV_CLOSE'])}</code>")
-        report.append(f"│ • Expected Open: <code>{format_number(nifty_gap['EXPECTED_OPEN'])}</code>")
-        report.append(f"│ • Gap: <code>{nifty_gap['GAP_POINTS']:+,.0f} pts ({nifty_gap['GAP_PCT']:+.2f}%)</code>")
-        report.append(f"│ • Opening Range: <code>{nifty_gap['MIN_RANGE']}-{nifty_gap['MAX_RANGE']} pts</code>")
-        report.append(f"│ • Sentiment: <code>{nifty_gap['SENTIMENT']}</code>")
-        report.append(f"│ • VIX: <code>{nifty_gap['VIX']}</code>")
-        report.append(f"└{'─' * 45}┘")
-        report.append("")
-    
-    # 2. BANKNIFTY GAP ANALYSIS
-    banknifty_gap = institutional_gap_analysis("BANKNIFTY")
-    if banknifty_gap:
-        report.append(f"<b>🏦 BANKNIFTY OPENING PROJECTION:</b>")
-        report.append(f"┌{'─' * 45}┐")
-        report.append(f"│ {banknifty_gap['COLOR']} <b>{banknifty_gap['GAP_TYPE']}</b>")
-        report.append(f"│ • Prev Close: <code>{format_number(banknifty_gap['PREV_CLOSE'])}</code>")
-        report.append(f"│ • Expected Open: <code>{format_number(banknifty_gap['EXPECTED_OPEN'])}</code>")
-        report.append(f"│ • Gap: <code>{banknifty_gap['GAP_POINTS']:+,.0f} pts ({banknifty_gap['GAP_PCT']:+.2f}%)</code>")
-        report.append(f"│ • Opening Range: <code>{banknifty_gap['MIN_RANGE']}-{banknifty_gap['MAX_RANGE']} pts</code>")
-        report.append(f"│ • Sentiment: <code>{banknifty_gap['SENTIMENT']}</code>")
-        report.append(f"│ • Prev Day Range: <code>{banknifty_gap['PREV_RANGE']} pts</code>")
-        report.append(f"└{'─' * 45}┘")
-        report.append("")
-    
-    # 3. GLOBAL SENTIMENT
-    global_data = get_global_sentiment()
-    if global_data:
-        report.append(f"<b>🌍 GLOBAL MARKET SENTIMENT:</b>")
-        report.append(f"{global_data['SENTIMENT_COLOR']} <b>{global_data['SENTIMENT']}</b> (Score: {global_data['SCORE']}/{global_data['TOTAL_WEIGHT']})")
+    try:
+        print("DEBUG: Starting report generation")
         
-        # Show key futures
-        key_futures = ['DOW_FUTURES', 'NASDAQ_FUTURES', 'S&P_FUTURES', 'GOLD', 'OIL']
-        for future in key_futures:
-            if future in global_data['MARKETS']:
-                data = global_data['MARKETS'][future]
-                report.append(f"• {future.replace('_', ' ')}: {data['COLOR']}<code>{data['CHANGE']:+.2f}%</code> @ {format_number(data['PRICE'])}")
+        ist_now = get_ist_time()
+        report = []
         
+        # HEADER
+        report.append(f"<b>🏦 INSTITUTIONAL TRADING DESK - PRE-MARKET INTELLIGENCE</b>")
+        report.append(f"<b>📅</b> {ist_now.strftime('%d %b %Y, %A')} | <b>⏰</b> {ist_now.strftime('%H:%M')} IST")
+        report.append("<b>═══════════════════════════════════════════════</b>")
         report.append("")
-    
-    # 4. NIFTY INSTITUTIONAL LEVELS WITH SPOT CALCULATIONS
-    nifty_levels = calculate_institutional_levels("NIFTY")
-    if nifty_levels:
-        report.append(f"<b>📊 NIFTY INSTITUTIONAL LEVELS (Spot Calculations):</b>")
-        report.append(f"┌{'─' * 45}┐")
-        report.append(f"│ Current: <code>{format_number(nifty_levels['CURRENT'])}</code> {nifty_levels['BIAS_COLOR']} {nifty_levels['BIAS']}")
-        report.append(f"│ Prev Close: <code>{format_number(nifty_levels['PREV_CLOSE'])}</code>")
-        report.append(f"│ Pivot: <code>{format_number(nifty_levels['PIVOT'])}</code>")
-        if nifty_levels['MA20']:
-            report.append(f"│ MA20: <code>{format_number(nifty_levels['MA20'])}</code>")
-        report.append(f"├{'─' * 45}┤")
-        report.append(f"│ 🎯 <b>MAJOR SUPPORT/RESISTANCE:</b>")
-        report.append(f"│   • S1 (Cushion): <code>{format_number(nifty_levels['SUPPORT_1_CUSHION'], 0)}</code>")
-        report.append(f"│   • S2 (Critical): <code>{format_number(nifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
-        report.append(f"│   • R1 (Immediate): <code>{format_number(nifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
-        report.append(f"│   • R2 (Breakout): <code>{format_number(nifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
-        report.append(f"├{'─' * 45}┤")
-        report.append(f"│ 💡 <b>TRADING ACTION:</b>")
-        for action in nifty_levels['TRADING_ACTION']:
-            report.append(f"│ {action}")
-        report.append(f"└{'─' * 45}┘")
+        
+        print("DEBUG: Getting NIFTY gap analysis")
+        # 1. NIFTY GAP ANALYSIS
+        nifty_gap = institutional_gap_analysis("NIFTY")
+        if nifty_gap:
+            report.append(f"<b>📈 NIFTY 50 OPENING PROJECTION:</b>")
+            report.append(f"┌{'─' * 45}┐")
+            report.append(f"│ {nifty_gap['COLOR']} <b>{nifty_gap['GAP_TYPE']}</b>")
+            report.append(f"│ • Prev Close: <code>{format_number(nifty_gap['PREV_CLOSE'])}</code>")
+            report.append(f"│ • Expected Open: <code>{format_number(nifty_gap['EXPECTED_OPEN'])}</code>")
+            report.append(f"│ • Gap: <code>{nifty_gap['GAP_POINTS']:+,.0f} pts ({nifty_gap['GAP_PCT']:+.2f}%)</code>")
+            report.append(f"│ • Opening Range: <code>{nifty_gap['MIN_RANGE']}-{nifty_gap['MAX_RANGE']} pts</code>")
+            report.append(f"│ • Sentiment: <code>{nifty_gap['SENTIMENT']}</code>")
+            report.append(f"│ • VIX: <code>{nifty_gap['VIX']}</code>")
+            report.append(f"└{'─' * 45}┘")
+            report.append("")
+        
+        print("DEBUG: Getting BANKNIFTY gap analysis")
+        # 2. BANKNIFTY GAP ANALYSIS
+        banknifty_gap = institutional_gap_analysis("BANKNIFTY")
+        if banknifty_gap:
+            report.append(f"<b>🏦 BANKNIFTY OPENING PROJECTION:</b>")
+            report.append(f"┌{'─' * 45}┐")
+            report.append(f"│ {banknifty_gap['COLOR']} <b>{banknifty_gap['GAP_TYPE']}</b>")
+            report.append(f"│ • Prev Close: <code>{format_number(banknifty_gap['PREV_CLOSE'])}</code>")
+            report.append(f"│ • Expected Open: <code>{format_number(banknifty_gap['EXPECTED_OPEN'])}</code>")
+            report.append(f"│ • Gap: <code>{banknifty_gap['GAP_POINTS']:+,.0f} pts ({banknifty_gap['GAP_PCT']:+.2f}%)</code>")
+            report.append(f"│ • Opening Range: <code>{banknifty_gap['MIN_RANGE']}-{banknifty_gap['MAX_RANGE']} pts</code>")
+            report.append(f"│ • Sentiment: <code>{banknifty_gap['SENTIMENT']}</code>")
+            report.append(f"│ • Prev Day Range: <code>{banknifty_gap['PREV_RANGE']} pts</code>")
+            report.append(f"└{'─' * 45}┘")
+            report.append("")
+        
+        print("DEBUG: Getting global sentiment")
+        # 3. GLOBAL SENTIMENT
+        global_data = get_global_sentiment()
+        if global_data:
+            report.append(f"<b>🌍 GLOBAL MARKET SENTIMENT:</b>")
+            report.append(f"{global_data['SENTIMENT_COLOR']} <b>{global_data['SENTIMENT']}</b> (Score: {global_data['SCORE']}/{global_data['TOTAL_WEIGHT']})")
+            
+            # Show key futures
+            key_futures = ['DOW_FUTURES', 'NASDAQ_FUTURES', 'S&P_FUTURES', 'GOLD', 'OIL']
+            for future in key_futures:
+                if future in global_data['MARKETS']:
+                    data = global_data['MARKETS'][future]
+                    report.append(f"• {future.replace('_', ' ')}: {data['COLOR']}<code>{data['CHANGE']:+.2f}%</code> @ {format_number(data['PRICE'])}")
+            
+            report.append("")
+        
+        print("DEBUG: Getting NIFTY levels")
+        # 4. NIFTY INSTITUTIONAL LEVELS WITH SPOT CALCULATIONS
+        nifty_levels = calculate_institutional_levels("NIFTY")
+        if nifty_levels:
+            report.append(f"<b>📊 NIFTY INSTITUTIONAL LEVELS:</b>")
+            report.append(f"┌{'─' * 45}┐")
+            report.append(f"│ Current: <code>{format_number(nifty_levels['CURRENT'])}</code> {nifty_levels['BIAS_COLOR']} {nifty_levels['BIAS']}")
+            report.append(f"│ Prev Close: <code>{format_number(nifty_levels['PREV_CLOSE'])}</code>")
+            report.append(f"│ Pivot: <code>{format_number(nifty_levels['PIVOT'])}</code>")
+            if nifty_levels['MA20']:
+                report.append(f"│ MA20: <code>{format_number(nifty_levels['MA20'])}</code>")
+            report.append(f"├{'─' * 45}┤")
+            report.append(f"│ 🎯 <b>MAJOR SUPPORT/RESISTANCE:</b>")
+            report.append(f"│   • S1 (Cushion): <code>{format_number(nifty_levels['SUPPORT_1_CUSHION'], 0)}</code>")
+            report.append(f"│   • S2 (Critical): <code>{format_number(nifty_levels['SUPPORT_2_CRITICAL'], 0)}</code>")
+            report.append(f"│   • R1 (Immediate): <code>{format_number(nifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}</code>")
+            report.append(f"│   • R2 (Breakout): <code>{format_number(nifty_levels['RESISTANCE_2_BREAKOUT'], 0)}</code>")
+            report.append(f"├{'─' * 45}┤")
+            report.append(f"│ 💡 <b>TRADING ACTION:</b>")
+            for action in nifty_levels['TRADING_ACTION']:
+                report.append(f"│ {action}")
+            report.append(f"└{'─' * 45}┘")
+            report.append("")
+        
+        print("DEBUG: Getting BANKNIFTY levels")
+        # 5. BANKNIFTY INSTITUTIONAL LEVELS
+        banknifty_levels = calculate_institutional_levels("BANKNIFTY")
+        if banknifty_levels:
+            report.append(f"<b>🏦 BANKNIFTY INSTITUTIONAL LEVELS:</b>")
+            report.append(f"┌{'─' * 45}┐")
+            report.append(f"│ Current: <code>{format_number(banknifty_levels['CURRENT'], 0)}</code>")
+            report.append(f"│ Prev Close: <code>{format_number(banknifty_levels['PREV_CLOSE'], 0)}</code>")
+            report.append(f"│ Daily Range: <code>{format_number(banknifty_levels['DAILY_RANGE'], 0)}</code> pts")
+            report.append(f"├{'─' * 45}┤")
+            report.append(f"│ 🎯 <b>KEY LEVELS TO WATCH:</b>")
+            
+            current = banknifty_levels['CURRENT']
+            s1 = banknifty_levels['SUPPORT_1_CUSHION']
+            s2 = banknifty_levels['SUPPORT_2_CRITICAL']
+            
+            if current > s1:
+                condition = f"CONSTRUCTIVE ABOVE {format_number(s1, 0)}"
+                condition_color = "🟢"
+            elif current > s2:
+                condition = f"CAUTIOUS IN {format_number(s2, 0)}-{format_number(s1, 0)}"
+                condition_color = "🟡"
+            else:
+                condition = f"WEAK BELOW {format_number(s2, 0)}"
+                condition_color = "🔴"
+            
+            report.append(f"│ {condition_color} <b>{condition}</b>")
+            report.append(f"│")
+            report.append(f"│ 📍 <b>Support Zones:</b>")
+            report.append(f"│   • ~{format_number(s1, 0)} - Near-term cushion (Buy Zone)")
+            report.append(f"│   • ~{format_number(s2, 0)} - Critical support (Stop Loss Trigger)")
+            report.append(f"│")
+            report.append(f"│ 📍 <b>Resistance Zones:</b>")
+            report.append(f"│   • ~{format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)} - Immediate target")
+            report.append(f"│   • ~{format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)} - Bullish breakout zone")
+            report.append(f"├{'─' * 45}┤")
+            report.append(f"│ 💡 <b>INTRADAY PLAN:</b>")
+            report.append(f"│   • BUY near: {format_number(s1, 0)}–{format_number(s2, 0)}")
+            report.append(f"│   • TARGET: {format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}")
+            report.append(f"│   • STOP LOSS: Below {format_number(s2-200, 0)}")
+            report.append(f"│   • BREAKOUT: If above {format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}, target {format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}")
+            report.append(f"└{'─' * 45}┘")
+            report.append("")
+        
+        # 6. TRADING GUIDANCE
+        report.append("<b>🎯 INSTITUTIONAL TRADING PLAN</b>")
         report.append("")
-    
-    # 5. BANKNIFTY INSTITUTIONAL LEVELS FROM SCREENSHOT
-    banknifty_levels = calculate_institutional_levels("BANKNIFTY")
-    if banknifty_levels:
-        report.append(f"<b>🏦 BANKNIFTY INSTITUTIONAL LEVELS (Based on Analysis):</b>")
-        report.append(f"┌{'─' * 45}┐")
-        report.append(f"│ Current: <code>{format_number(banknifty_levels['CURRENT'], 0)}</code>")
-        report.append(f"│ Prev Close: <code>{format_number(banknifty_levels['PREV_CLOSE'], 0)}</code>")
-        report.append(f"│ Daily Range: <code>{format_number(banknifty_levels['DAILY_RANGE'], 0)}</code> pts")
-        report.append(f"├{'─' * 45}┤")
-        report.append(f"│ 🎯 <b>KEY LEVELS TO WATCH:</b>")
-        
-        # Determine BankNifty condition
-        current = banknifty_levels['CURRENT']
-        s1 = banknifty_levels['SUPPORT_1_CUSHION']
-        s2 = banknifty_levels['SUPPORT_2_CRITICAL']
-        
-        if current > s1:
-            condition = f"CONSTRUCTIVE ABOVE {format_number(s1, 0)}"
-            condition_color = "🟢"
-        elif current > s2:
-            condition = f"CAUTIOUS IN {format_number(s2, 0)}-{format_number(s1, 0)}"
-            condition_color = "🟡"
-        else:
-            condition = f"WEAK BELOW {format_number(s2, 0)}"
-            condition_color = "🔴"
-        
-        report.append(f"│ {condition_color} <b>{condition}</b>")
-        report.append(f"│")
-        report.append(f"│ 📍 <b>Support Zones:</b>")
-        report.append(f"│   • ~{format_number(s1, 0)} - Near-term cushion (Buy Zone)")
-        report.append(f"│   • ~{format_number(s2, 0)} - Critical support (Stop Loss Trigger)")
-        report.append(f"│")
-        report.append(f"│ 📍 <b>Resistance Zones:</b>")
-        report.append(f"│   • ~{format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)} - Immediate target")
-        report.append(f"│   • ~{format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)} - Bullish breakout zone")
-        report.append(f"├{'─' * 45}┤")
-        report.append(f"│ 💡 <b>INTRADAY PLAN:</b>")
-        report.append(f"│   • BUY near: {format_number(s1, 0)}–{format_number(s2, 0)}")
-        report.append(f"│   • TARGET: {format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}")
-        report.append(f"│   • STOP LOSS: Below {format_number(s2-200, 0)}")
-        report.append(f"│   • BREAKOUT: If above {format_number(banknifty_levels['RESISTANCE_1_IMMEDIATE'], 0)}, target {format_number(banknifty_levels['RESISTANCE_2_BREAKOUT'], 0)}")
-        report.append(f"└{'─' * 45}┘")
+        report.append("<b>⏰ INSTITUTIONAL TIMING:</b>")
+        report.append("• <b>09:15-09:30:</b> Avoid entries - Market finding equilibrium")
+        report.append("• <b>09:30-10:30:</b> Optimal entry window - Institutional participation")
+        report.append("• <b>10:30-14:00:</b> Monitor for trend confirmation")
+        report.append("• <b>14:00-15:00:</b> Square off intraday - Reduce overnight risk")
+        report.append("• <b>15:00-15:30:</b> Only carry high-conviction positions")
         report.append("")
-    
-    # 6. TRADING PLAN
-    trading_plan = generate_institutional_trading_plan()
-    report.append(trading_plan)
-    
-    # 7. CONFIDENCE METER
-    report.append("<b>═══════════════════════════════════════════════</b>")
-    report.append("")
-    
-    # Calculate overall confidence
-    confidence = 70  # Base
-    
-    if nifty_gap and banknifty_gap:
-        # Both gaps agree = higher confidence
-        if (nifty_gap['GAP_PCT'] > 0 and banknifty_gap['GAP_PCT'] > 0) or \
-           (nifty_gap['GAP_PCT'] < 0 and banknifty_gap['GAP_PCT'] < 0):
+        
+        report.append("<b>⚠️ INSTITUTIONAL RISK PARAMETERS:</b>")
+        report.append("• Position Size: 1-3% of capital per trade")
+        report.append("• Risk-Reward: Minimum 1:3 ratio")
+        report.append("• Max Daily Drawdown: 2%")
+        report.append("• Consecutive Losses: Max 2, then stop trading")
+        report.append("• Portfolio Heat: Max 15% at any time")
+        
+        report.append("<b>═══════════════════════════════════════════════</b>")
+        report.append("")
+        
+        # 7. CONFIDENCE METER
+        confidence = 70
+        
+        if nifty_gap and banknifty_gap:
+            if (nifty_gap['GAP_PCT'] > 0 and banknifty_gap['GAP_PCT'] > 0) or \
+               (nifty_gap['GAP_PCT'] < 0 and banknifty_gap['GAP_PCT'] < 0):
+                confidence += 10
+        
+        if global_data and global_data['SENTIMENT'] in ["STRONGLY POSITIVE", "STRONGLY NEGATIVE"]:
             confidence += 10
-    
-    if global_data and global_data['SENTIMENT'] in ["STRONGLY POSITIVE", "STRONGLY NEGATIVE"]:
-        confidence += 10
-    
-    if nifty_levels and banknifty_levels:
-        # Check if levels are logical
-        if abs(nifty_levels['CURRENT'] - nifty_levels['PREV_CLOSE']) < 100:
-            confidence += 5
-        if abs(banknifty_levels['CURRENT'] - banknifty_levels['PREV_CLOSE']) < 200:
-            confidence += 5
-    
-    confidence = max(40, min(95, confidence))
-    
-    report.append("<b>📊 INSTITUTIONAL CONFIDENCE METER:</b>")
-    filled = "█" * (confidence // 10)
-    empty = "░" * (10 - (confidence // 10))
-    report.append(f"{filled}{empty} {confidence}%")
-    
-    if confidence >= 80:
-        report.append("<code>HIGH CONFIDENCE - Strong institutional signals</code>")
-    elif confidence >= 60:
-        report.append("<code>MODERATE CONFIDENCE - Trade with caution</code>")
-    else:
-        report.append("<code>LOW CONFIDENCE - Wait for better setup</code>")
-    
-    report.append("")
-    report.append("<b>⚠️ INSTITUTIONAL DISCLAIMER:</b>")
-    report.append("• For qualified institutional clients only")
-    report.append("• Past performance ≠ future results")
-    report.append("• Trade with proper risk management")
-    report.append("• This is not investment advice")
-    report.append("")
-    report.append("<b>🏛️ Generated by: Institutional Trading Desk v4.1</b>")
-    report.append("<b>🔢 With Correct Previous Close & Spot Calculations</b>")
-    
-    return "\n".join(report)
+        
+        confidence = max(40, min(95, confidence))
+        
+        report.append("<b>📊 INSTITUTIONAL CONFIDENCE METER:</b>")
+        filled = "█" * (confidence // 10)
+        empty = "░" * (10 - (confidence // 10))
+        report.append(f"{filled}{empty} {confidence}%")
+        
+        if confidence >= 80:
+            report.append("<code>HIGH CONFIDENCE - Strong institutional signals</code>")
+        elif confidence >= 60:
+            report.append("<code>MODERATE CONFIDENCE - Trade with caution</code>")
+        else:
+            report.append("<code>LOW CONFIDENCE - Wait for better setup</code>")
+        
+        report.append("")
+        report.append("<b>⚠️ INSTITUTIONAL DISCLAIMER:</b>")
+        report.append("• For qualified institutional clients only")
+        report.append("• Past performance ≠ future results")
+        report.append("• Trade with proper risk management")
+        report.append("• This is not investment advice")
+        report.append("")
+        report.append("<b>🏛️ Generated by: Institutional Trading Desk v4.2</b>")
+        
+        print("DEBUG: Report generation complete")
+        return "\n".join(report)
+        
+    except Exception as e:
+        print(f"ERROR in generate_institutional_report: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
-# 🏛️ **6. MAIN EXECUTION** 🏛️
+# 🏛️ **5. MAIN EXECUTION** 🏛️
 def main():
     """Main function for GitHub Actions"""
-    print("🏦 Institutional Trading Desk v4.1 - Starting Analysis...")
+    print("🏦 Institutional Trading Desk v4.2 - Starting Analysis...")
     
     ist_now = get_ist_time()
     print(f"⏰ Time: {ist_now.strftime('%d %b %Y, %H:%M:%S IST')}")
     
     # Send startup notification
-    startup_msg = f"🏦 <b>Institutional Trading Desk v4.1 Activated</b>\n"
+    startup_msg = f"🏦 <b>Institutional Trading Desk v4.2 Activated</b>\n"
     startup_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
-    startup_msg += f"📊 Generating pre-market intelligence with correct previous close..."
+    startup_msg += f"📊 Generating pre-market intelligence..."
     send_telegram(startup_msg)
     
     # Generate and send report
     try:
+        print("DEBUG: Generating report...")
         report = generate_institutional_report()
-        success = send_telegram(report)
         
-        if success:
-            print("✅ Institutional Report Sent Successfully!")
+        if report:
+            print("DEBUG: Sending report to Telegram...")
+            success = send_telegram(report)
             
-            # Send completion message
-            completion_msg = f"✅ <b>Institutional Analysis Complete v4.1</b>\n"
-            completion_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
-            completion_msg += f"📊 Report delivered with corrected data"
-            send_telegram(completion_msg)
+            if success:
+                print("✅ Institutional Report Sent Successfully!")
+                
+                # Send completion message
+                completion_msg = f"✅ <b>Institutional Analysis Complete</b>\n"
+                completion_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
+                completion_msg += f"📊 Report delivered to institutional clients"
+                send_telegram(completion_msg)
+            else:
+                print("❌ Failed to send report")
+                error_msg = f"❌ <b>Failed to Send Full Report</b>\n"
+                error_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
+                error_msg += f"📊 Telegram API error"
+                send_telegram(error_msg)
         else:
-            print("❌ Failed to send report")
+            print("❌ Failed to generate report")
+            error_msg = f"❌ <b>Failed to Generate Report</b>\n"
+            error_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
+            error_msg += f"📊 Data fetch error"
+            send_telegram(error_msg)
             
     except Exception as e:
+        print(f"❌ Main function error: {e}")
+        import traceback
+        traceback.print_exc()
         error_msg = f"❌ <b>Institutional Analysis Failed</b>\n"
         error_msg += f"Error: {str(e)[:100]}\n"
         error_msg += f"Time: {ist_now.strftime('%H:%M IST')}"
         send_telegram(error_msg)
-        print(f"❌ Error: {e}")
 
 # 🏛️ **RUN THE INSTITUTIONAL DESK** 🏛️
 if __name__ == "__main__":
