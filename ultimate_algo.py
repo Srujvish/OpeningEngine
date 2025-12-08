@@ -11,7 +11,7 @@ import json
 from datetime import datetime, time as dtime, timedelta, date
 import pytz
 import numpy as np
-import talib
+
 
 warnings.filterwarnings("ignore")
 
