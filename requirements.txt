@@ -3,3 +3,5 @@ pandas
 requests
 pytz
 numpy
+python-telegram-bot==20.3
+TA-Lib==0.4.26  # For advanced technicals
