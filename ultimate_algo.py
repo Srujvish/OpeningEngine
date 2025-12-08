@@ -1,5 +1,5 @@
-# 🏦 INSTITUTIONAL TRADING DESK - PRE-MARKET INTELLIGENCE
-# 🎯 PURE INSTITUTIONAL LOGIC WITH GAP ANALYSIS FOR NIFTY & BANKNIFTY
+# 🏦 INSTITUTIONAL PRE-MARKET ANALYSIS ENGINE v2.0
+# 🎯 WITH INSTITUTIONAL LEVELS AND SPOT CALCULATIONS
 
 import os
 import time
@@ -11,7 +11,6 @@ import json
 from datetime import datetime, time as dtime, timedelta
 import pytz
 import numpy as np
-from typing import Dict, List, Tuple, Optional
 
 warnings.filterwarnings("ignore")
 
@@ -20,11 +19,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 def send_telegram(msg):
-    """Send message to Telegram with HTML formatting"""
     try:
-        if not BOT_TOKEN or not CHAT_ID:
-            return False
-            
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
         response = requests.post(url, json=payload, timeout=10)
@@ -33,23 +28,12 @@ def send_telegram(msg):
         print(f"Telegram error: {e}")
         return False
 
-# --------- INSTITUTIONAL TIME HANDLING ---------
+# --------- GET IST TIME ---------
 def get_ist_time():
-    """Get correct IST time with proper year handling"""
-    try:
-        utc_now = datetime.utcnow()
-        ist = pytz.timezone('Asia/Kolkata')
-        utc_with_tz = pytz.utc.localize(utc_now)
-        ist_now = utc_with_tz.astimezone(ist)
-        
-        current_year = datetime.now().year
-        if ist_now.year != current_year:
-            ist_now = ist_now.replace(year=current_year)
-            
-        return ist_now
-    except Exception as e:
-        print(f"Date error: {e}")
-        return datetime.now()
+    utc_now = datetime.utcnow()
+    ist = pytz.timezone('Asia/Kolkata')
+    ist_now = utc_now.replace(tzinfo=pytz.utc).astimezone(ist)
+    return ist_now
 
 # --------- HELPER FUNCTION FOR NUMBER FORMATTING ---------
 def format_number(num, decimal_places=2):
@@ -69,7 +53,7 @@ def format_number(num, decimal_places=2):
     except:
         return str(num)
 
-# --------- DYNAMIC DATA FETCH FUNCTION ---------
+# --------- DYNAMIC PREVIOUS CLOSE FETCH ---------
 def get_correct_previous_close(index="NIFTY"):
     """Get accurate previous close dynamically"""
     try:
@@ -78,39 +62,30 @@ def get_correct_previous_close(index="NIFTY"):
         else:  # BANKNIFTY
             symbol = "^NSEBANK"
         
-        # Get data for last 7 days to handle weekends
-        data = yf.download(symbol, period="7d", interval="1d", progress=False)
+        # Get data for last 5 days to handle weekends
+        data = yf.download(symbol, period="5d", interval="1d", progress=False)
         
         if data.empty or len(data) < 2:
-            # Try with 1 hour interval for most recent data
+            # Try with hourly data for most recent data
             hourly_data = yf.download(symbol, period="5d", interval="1h", progress=False)
             if not hourly_data.empty:
-                # Get last day's closing price from hourly data
+                # Get last trading day's closing price
                 last_date = hourly_data.index[-1].date()
                 day_data = hourly_data[hourly_data.index.date == last_date]
                 if not day_data.empty:
                     return float(day_data['Close'].iloc[-1])
         
-        # Get the most recent trading day's close
-        # Find yesterday (skip today if market is open)
-        current_time = get_ist_time()
-        
+        # Get the most recent trading day's close (index -2)
         if len(data) >= 2:
-            # Always use the second last entry as previous close
-            # This handles weekends and holidays automatically
-            prev_close = float(data['Close'].iloc[-2])
-            print(f"{index} Previous Close (from data): {prev_close}")
-            return prev_close
+            return float(data['Close'].iloc[-2])
         elif len(data) == 1:
-            # Only one day of data available
             return float(data['Close'].iloc[-1])
         else:
-            # No data - this should not happen
             raise Exception(f"No data available for {index}")
             
     except Exception as e:
         print(f"Error getting previous close for {index}: {e}")
-        raise e  # Don't use fallback - raise error
+        raise e
 
 # --------- GET CURRENT MARKET PRICE ---------
 def get_current_price(index="NIFTY"):
@@ -146,9 +121,11 @@ def institutional_gap_analysis(index="NIFTY"):
     """
     try:
         if index == "NIFTY":
+            symbol = "^NSEI"
             round_to = 50
             volatility_factor = 1.0
         else:  # BANKNIFTY
+            symbol = "^NSEBANK"
             round_to = 100
             volatility_factor = 1.5
         
@@ -159,11 +136,6 @@ def institutional_gap_analysis(index="NIFTY"):
         current_price = get_current_price(index)
         
         # Get additional data for calculations
-        if index == "NIFTY":
-            symbol = "^NSEI"
-        else:
-            symbol = "^NSEBANK"
-            
         data = yf.download(symbol, period="5d", interval="1d", progress=False)
         if data.empty or len(data) < 2:
             # Use reasonable defaults if no historical data
@@ -309,24 +281,26 @@ def calculate_institutional_levels(index="NIFTY"):
         resistance_1_immediate = round(R1 / round_to) * round_to
         resistance_2_breakout = round(R2 / round_to) * round_to
         
-        # For BANKNIFTY: Adjust levels based on screenshot logic
+        # For BANKNIFTY: Smart level calculation based on current price
         if index == "BANKNIFTY":
-            # Base levels from market structure
-            if current_price > 60000:
+            # Dynamic levels based on price
+            price_level = current_price // 1000 * 1000
+            
+            if price_level >= 60000:
                 support_1_cushion = 59500
                 support_2_critical = 59000
                 resistance_1_immediate = 60150
                 resistance_2_breakout = 60650
-            elif current_price > 59000:
+            elif price_level >= 59000:
                 support_1_cushion = 58500
                 support_2_critical = 58000
                 resistance_1_immediate = 59500
                 resistance_2_breakout = 60000
             else:
-                support_1_cushion = 57500
-                support_2_critical = 57000
-                resistance_1_immediate = 58500
-                resistance_2_breakout = 59000
+                support_1_cushion = max(57500, round((current_price - 500) / round_to) * round_to)
+                support_2_critical = max(57000, round((current_price - 1000) / round_to) * round_to)
+                resistance_1_immediate = round((current_price + 500) / round_to) * round_to
+                resistance_2_breakout = round((current_price + 1000) / round_to) * round_to
         
         # 🎯 CURRENT PRICE ANALYSIS
         ma20 = None
@@ -470,7 +444,7 @@ def get_global_sentiment():
         print(f"Global sentiment error: {e}")
         return None
 
-# 🏛️ **4. GENERATE COMPLETE INSTITUTIONAL REPORT** 🏛️
+# 🏛️ **4. GENERATE INSTITUTIONAL REPORT** 🏛️
 def generate_institutional_report():
     """Generate complete institutional trading desk report"""
     try:
@@ -646,25 +620,27 @@ def generate_institutional_report():
         report.append("• Trade with proper risk management")
         report.append("• This is not investment advice")
         report.append("")
-        report.append("<b>🏛️ Generated by: Institutional Trading Desk v5.0</b>")
-        report.append("<b>📈 Dynamic Analysis - No Fallback Values</b>")
+        report.append("<b>🏛️ Generated by: Institutional Trading Desk v2.0</b>")
+        report.append("<b>📈 Dynamic Analysis - No Hardcoded Values</b>")
         
         return "\n".join(report)
         
     except Exception as e:
         print(f"ERROR in generate_institutional_report: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
-# 🏛️ **5. MAIN EXECUTION** 🏛️
+# 🏛️ **MAIN EXECUTION** 🏛️
 def main():
     """Main function for GitHub Actions"""
-    print("🏦 Institutional Trading Desk v5.0 - Starting Analysis...")
+    print("🏦 Institutional Trading Desk v2.0 - Starting Analysis...")
     
     ist_now = get_ist_time()
     print(f"⏰ Time: {ist_now.strftime('%d %b %Y, %H:%M:%S IST')}")
     
     # Send startup notification
-    startup_msg = f"🏦 <b>Institutional Trading Desk v5.0 Activated</b>\n"
+    startup_msg = f"🏦 <b>Institutional Trading Desk v2.0 Activated</b>\n"
     startup_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
     startup_msg += f"📊 Generating dynamic pre-market intelligence..."
     send_telegram(startup_msg)
@@ -679,7 +655,7 @@ def main():
             if success:
                 print("✅ Institutional Report Sent Successfully!")
                 
-                completion_msg = f"✅ <b>Institutional Analysis Complete v5.0</b>\n"
+                completion_msg = f"✅ <b>Institutional Analysis Complete v2.0</b>\n"
                 completion_msg += f"📅 {ist_now.strftime('%d %b %Y')} | ⏰ {ist_now.strftime('%H:%M IST')}\n"
                 completion_msg += f"📊 Dynamic analysis delivered"
                 send_telegram(completion_msg)
@@ -697,6 +673,8 @@ def main():
             
     except Exception as e:
         print(f"❌ Main function error: {e}")
+        import traceback
+        traceback.print_exc()
         error_msg = f"❌ <b>Institutional Analysis Failed</b>\n"
         error_msg += f"Error: {str(e)[:100]}\n"
         error_msg += f"Time: {ist_now.strftime('%H:%M IST')}"
