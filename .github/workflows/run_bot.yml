@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install yfinance pandas numpy pytz requests joblib scikit-learn python-telegram-bot==20.3
+        pip install -r requirements.txt
     
     - name: Display time
       run: |
@@ -32,4 +32,8 @@ jobs:
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
+        API_KEY: ${{ secrets.API_KEY }}
+        CLIENT_CODE: ${{ secrets.CLIENT_CODE }}
+        PASSWORD: ${{ secrets.PASSWORD }}
+        TOTP_SECRET: ${{ secrets.TOTP_SECRET }}
       run: python ultimate_algo.py
