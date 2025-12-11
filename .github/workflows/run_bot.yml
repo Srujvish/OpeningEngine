@@ -31,7 +31,9 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install yfinance pandas numpy pytz requests
+          pip install yfinance pandas numpy pytz requests joblib scikit-learn
+          # OR if you have requirements.txt:
+          # pip install -r requirements.txt
       
       - name: Run Algorithm
         env:
