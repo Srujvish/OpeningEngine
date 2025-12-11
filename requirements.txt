@@ -14,13 +14,6 @@ pyotp>=2.8.0
 # Technical analysis (optional)
 ta>=0.10.0
 
-# For data visualization (optional)
-matplotlib>=3.7.0
-plotly>=5.14.0
-
-# For date/time handling
-python-dateutil>=2.8.0
-
 # For environment variables
 python-dotenv>=1.0.0
 
