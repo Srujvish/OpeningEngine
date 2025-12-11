@@ -1,49 +1,29 @@
-name: 🕘 9:00 AM IST Market Analysis
+name: Pre-Market Analysis
 
 on:
   schedule:
-    # 9:00 AM IST = 03:30 UTC
-    - cron: "30 2 * * 1-5"  # 8:00 AM IST = 2:30 AM UTC
-  
+    # Runs at 8:30 AM IST every weekday (3:00 UTC)
+    - cron: '00 3 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  analysis:
+  generate-report:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 🕒 Show Current Time
-        run: |
-          echo "=== UTC NOW ==="
-          date -u
-          echo "=== IST NOW ==="
-          TZ='Asia/Kolkata' date
-          echo "Triggered at (IST): $(TZ='Asia/Kolkata' date '+%Y-%m-%d %H:%M:%S')"
-      
-      - name: Checkout
-        uses: actions/checkout@v3
-      
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-      
-      - name: Install Dependencies
-        run: |
-          pip install --upgrade pip
-          pip install yfinance pandas numpy pytz requests joblib scikit-learn
-          # OR if you have requirements.txt:
-          # pip install -r requirements.txt
-      
-      - name: Run Algorithm
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: |
-          echo "🚀 Running 9:00 AM IST analysis..."
-          python ultimate_algo.py
-      
-      - name: Done
-        run: |
-          echo "Completed at IST: $(TZ='Asia/Kolkata' date '+%H:%M:%S')"
-          echo "Date: $(TZ='Asia/Kolkata' date '+%d-%m-%Y')"
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Run Pre-Market Analysis
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+      run: python premarket_analysis.py
