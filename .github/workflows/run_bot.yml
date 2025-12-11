@@ -2,8 +2,8 @@ name: Pre-Market Analysis
 
 on:
   schedule:
-    # Runs at 8:30 AM IST every weekday (3:00 UTC)
-    - cron: '00 3 * * 1-5'
+    # Runs at 9:00 AM IST every weekday (3:30 UTC)
+    - cron: '30 3 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -16,14 +16,20 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.10'
     
     - name: Install dependencies
       run: |
-        pip install -r requirements.txt
+        pip install --upgrade pip
+        pip install yfinance pandas numpy pytz requests joblib scikit-learn python-telegram-bot==20.3
+    
+    - name: Display time
+      run: |
+        echo "UTC Time: $(date -u)"
+        echo "IST Time: $(TZ='Asia/Kolkata' date)"
     
     - name: Run Pre-Market Analysis
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
-      run: python premarket_analysis.py
+      run: python ultimate_algo.py
